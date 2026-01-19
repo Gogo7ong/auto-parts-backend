@@ -52,6 +52,13 @@ public class PurchaseOrderServiceImpl extends ServiceImpl<PurchaseOrderMapper, P
     @Transactional(rollbackFor = Exception.class)
     public boolean createOrderWithItems(PurchaseOrderDTO dto) {
         PurchaseOrder order = dto.getOrder();
+        
+        // 自动生成订单编号
+        if (order.getOrderNo() == null || order.getOrderNo().isEmpty()) {
+            String orderNo = generateOrderNo();
+            order.setOrderNo(orderNo);
+        }
+        
         order.setStatus("PENDING");
         order.setCreateTime(LocalDateTime.now());
         this.save(order);
@@ -64,6 +71,13 @@ public class PurchaseOrderServiceImpl extends ServiceImpl<PurchaseOrderMapper, P
             }
         }
         return true;
+    }
+    
+    private String generateOrderNo() {
+        // 生成采购订单编号：PO + 年月日 + 3位随机数
+        String dateStr = java.time.LocalDate.now().format(java.time.format.DateTimeFormatter.ofPattern("yyyyMMdd"));
+        int randomNum = (int) (Math.random() * 900) + 100;
+        return "PO" + dateStr + randomNum;
     }
 
     @Override

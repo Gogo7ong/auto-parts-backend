@@ -10,6 +10,9 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
+import jakarta.servlet.http.HttpServletRequest;
+import java.util.List;
+import java.util.Map;
 
 /**
  * @author dengjiawen
@@ -52,16 +55,62 @@ public class PurchaseOrderController {
 
     @Operation(summary = "新增采购订单（包含明细）")
     @PostMapping("/with-items")
-    public Result<Void> addWithItems(@RequestBody PurchaseOrderDTO dto) {
+    public Result<Void> addWithItems(@RequestBody PurchaseOrderDTO dto, HttpServletRequest request) {
+        // 设置创建人信息
+        Map<String, Object> userInfo = getUserInfo(request);
+        PurchaseOrder order = dto.getOrder();
+        if (order.getCreateUserId() == null) {
+            order.setCreateUserId((Long) userInfo.get("userId"));
+        }
+        if (order.getCreateUserName() == null) {
+            order.setCreateUserName((String) userInfo.get("username"));
+        }
         purchaseOrderService.createOrderWithItems(dto);
         return Result.success();
     }
 
     @Operation(summary = "新增采购订单")
     @PostMapping
-    public Result<Void> add(@RequestBody PurchaseOrder order) {
+    public Result<Void> add(@RequestBody PurchaseOrder order, HttpServletRequest request) {
+        // 自动生成订单编号
+        if (order.getOrderNo() == null || order.getOrderNo().isEmpty()) {
+            String orderNo = generateOrderNo();
+            order.setOrderNo(orderNo);
+        }
+        
+        // 设置创建人信息
+        Map<String, Object> userInfo = getUserInfo(request);
+        if (order.getCreateUserId() == null) {
+            order.setCreateUserId((Long) userInfo.get("userId"));
+        }
+        if (order.getCreateUserName() == null) {
+            order.setCreateUserName((String) userInfo.get("username"));
+        }
+        
         purchaseOrderService.save(order);
         return Result.success();
+    }
+    
+    private Map<String, Object> getUserInfo(HttpServletRequest request) {
+        Map<String, Object> userInfo = new java.util.HashMap<>();
+        String userId = request.getHeader("userId");
+        String username = request.getHeader("username");
+        if (userId == null || userId.isEmpty()) {
+            userId = "1";
+        }
+        if (username == null || username.isEmpty()) {
+            username = "系统管理员";
+        }
+        userInfo.put("userId", Long.parseLong(userId));
+        userInfo.put("username", username);
+        return userInfo;
+    }
+    
+    private String generateOrderNo() {
+        // 生成采购订单编号：PO + 年月日 + 3位随机数
+        String dateStr = java.time.LocalDate.now().format(java.time.format.DateTimeFormatter.ofPattern("yyyyMMdd"));
+        int randomNum = (int) (Math.random() * 900) + 100;
+        return "PO" + dateStr + randomNum;
     }
 
     @Operation(summary = "更新采购订单")
