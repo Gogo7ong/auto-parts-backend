@@ -2,6 +2,7 @@ package com.djw.autopartsbackend.service;
 
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.IService;
+import com.djw.autopartsbackend.dto.SalesOrderDTO;
 import com.djw.autopartsbackend.entity.SalesOrder;
 
 /**
@@ -19,4 +20,8 @@ public interface SalesOrderService extends IService<SalesOrder> {
     boolean completeOrder(Long orderId);
 
     boolean returnOrder(Long orderId);
+
+    boolean createOrderWithItems(SalesOrderDTO dto);
+
+    SalesOrderDTO getOrderWithItems(Long orderId);
 }

@@ -3,6 +3,7 @@ package com.djw.autopartsbackend.controller;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.djw.autopartsbackend.common.PageResult;
 import com.djw.autopartsbackend.common.Result;
+import com.djw.autopartsbackend.dto.SalesOrderDTO;
 import com.djw.autopartsbackend.entity.SalesOrder;
 import com.djw.autopartsbackend.service.SalesOrderService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -25,21 +26,35 @@ public class SalesOrderController {
     @Operation(summary = "分页查询销售订单列表")
     @GetMapping("/page")
     public Result<PageResult<SalesOrder>> page(
-            @RequestParam(defaultValue = "1") Integer current,
-            @RequestParam(defaultValue = "10") Integer size,
+            @RequestParam(defaultValue = "1") Integer page,
+            @RequestParam(defaultValue = "10") Integer pageSize,
             @RequestParam(required = false) String orderNo,
             @RequestParam(required = false) String customerName,
             @RequestParam(required = false) String status) {
-        Page<SalesOrder> page = new Page<>(current, size);
-        Page<SalesOrder> result = salesOrderService.pageQuery(page, orderNo, customerName, status);
+        Page<SalesOrder> pagination = new Page<>(page, pageSize);
+        Page<SalesOrder> result = salesOrderService.pageQuery(pagination, orderNo, customerName, status);
         return Result.success(PageResult.of(result.getTotal(), result.getRecords()));
     }
 
-    @Operation(summary = "根据ID查询销售订单详情")
+    @Operation(summary = "根据ID查询销售订单详情（包含明细）")
+    @GetMapping("/{id}/detail")
+    public Result<SalesOrderDTO> getDetail(@PathVariable Long id) {
+        SalesOrderDTO dto = salesOrderService.getOrderWithItems(id);
+        return Result.success(dto);
+    }
+
+    @Operation(summary = "根据ID查询销售订单")
     @GetMapping("/{id}")
     public Result<SalesOrder> getById(@PathVariable Long id) {
         SalesOrder order = salesOrderService.getById(id);
         return Result.success(order);
+    }
+
+    @Operation(summary = "新增销售订单（包含明细）")
+    @PostMapping("/with-items")
+    public Result<Void> addWithItems(@RequestBody SalesOrderDTO dto) {
+        salesOrderService.createOrderWithItems(dto);
+        return Result.success();
     }
 
     @Operation(summary = "新增销售订单")

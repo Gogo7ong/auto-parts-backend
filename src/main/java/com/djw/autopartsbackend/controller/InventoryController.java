@@ -27,11 +27,11 @@ public class InventoryController {
     @Operation(summary = "分页查询库存列表")
     @GetMapping("/page")
     public Result<PageResult<Inventory>> page(
-            @RequestParam(defaultValue = "1") Integer current,
-            @RequestParam(defaultValue = "10") Integer size,
+            @RequestParam(defaultValue = "1") Integer page,
+            @RequestParam(defaultValue = "10") Integer pageSize,
             @RequestParam(required = false) String keyword) {
-        Page<Inventory> page = new Page<>(current, size);
-        Page<Inventory> result = inventoryService.pageQuery(page, keyword);
+        Page<Inventory> pagination = new Page<>(page, pageSize);
+        Page<Inventory> result = inventoryService.pageQuery(pagination, keyword);
         return Result.success(PageResult.of(result.getTotal(), result.getRecords()));
     }
 

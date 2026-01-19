@@ -1,5 +1,6 @@
 package com.djw.autopartsbackend.controller;
 
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.djw.autopartsbackend.common.PageResult;
 import com.djw.autopartsbackend.common.Result;
@@ -9,6 +10,8 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
+
+import java.util.List;
 
 /**
  * @author dengjiawen
@@ -22,16 +25,25 @@ public class PartController {
     @Autowired
     private PartService partService;
 
+    @Operation(summary = "获取所有配件（用于下拉选择）")
+    @GetMapping("/all")
+    public Result<List<Part>> getAll() {
+        LambdaQueryWrapper<Part> wrapper = new LambdaQueryWrapper<>();
+        wrapper.eq(Part::getStatus, 1);
+        List<Part> list = partService.list(wrapper);
+        return Result.success(list);
+    }
+
     @Operation(summary = "分页查询配件列表")
     @GetMapping("/page")
     public Result<PageResult<Part>> page(
-            @RequestParam(defaultValue = "1") Integer current,
-            @RequestParam(defaultValue = "10") Integer size,
+            @RequestParam(defaultValue = "1") Integer page,
+            @RequestParam(defaultValue = "10") Integer pageSize,
             @RequestParam(required = false) String partCode,
             @RequestParam(required = false) String partName,
             @RequestParam(required = false) String category) {
-        Page<Part> page = new Page<>(current, size);
-        Page<Part> result = partService.pageQuery(page, partCode, partName, category);
+        Page<Part> pagination = new Page<>(page, pageSize);
+        Page<Part> result = partService.pageQuery(pagination, partCode, partName, category);
         return Result.success(PageResult.of(result.getTotal(), result.getRecords()));
     }
 

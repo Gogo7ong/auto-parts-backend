@@ -18,6 +18,9 @@ public class Inventory {
 
     private String warehouseLocation;
 
+    @TableLogic
+    private Integer deleted;
+
     @TableField(fill = FieldFill.INSERT_UPDATE)
     private LocalDateTime lastUpdateTime;
 }

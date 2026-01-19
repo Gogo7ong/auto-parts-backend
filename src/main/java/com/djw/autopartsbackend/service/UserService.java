@@ -2,6 +2,7 @@ package com.djw.autopartsbackend.service;
 
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.IService;
+import com.djw.autopartsbackend.dto.LoginDTO;
 import com.djw.autopartsbackend.entity.User;
 
 /**
@@ -15,4 +16,6 @@ public interface UserService extends IService<User> {
     boolean checkUsernameExists(String username, Long excludeId);
 
     Page<User> pageQuery(Page<User> page, String username, String realName, Long roleId);
+
+    User login(LoginDTO loginDTO);
 }

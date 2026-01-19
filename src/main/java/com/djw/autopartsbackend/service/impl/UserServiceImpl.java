@@ -3,6 +3,7 @@ package com.djw.autopartsbackend.service.impl;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
+import com.djw.autopartsbackend.dto.LoginDTO;
 import com.djw.autopartsbackend.entity.User;
 import com.djw.autopartsbackend.mapper.UserMapper;
 import com.djw.autopartsbackend.service.UserService;
@@ -41,5 +42,20 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
                 .eq(roleId != null, User::getRoleId, roleId)
                 .orderByDesc(User::getCreateTime);
         return this.page(page, wrapper);
+    }
+
+    @Override
+    public User login(LoginDTO loginDTO) {
+        User user = getByUsername(loginDTO.getUsername());
+        if (user == null) {
+            throw new RuntimeException("用户名或密码错误");
+        }
+        if (!loginDTO.getPassword().equals(user.getPassword())) {
+            throw new RuntimeException("用户名或密码错误");
+        }
+        if (user.getStatus() == 0) {
+            throw new RuntimeException("账号已被禁用");
+        }
+        return user;
     }
 }

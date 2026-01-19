@@ -37,9 +37,9 @@ CREATE TABLE IF NOT EXISTS `user` (
     INDEX `idx_phone` (`phone`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='用户表';
 
--- 插入管理员用户（密码：admin123，实际使用时需要加密）
+-- 插入管理员用户（密码：123456，使用 BCrypt 加密）
 INSERT INTO `user` (`username`, `password`, `real_name`, `phone`, `email`, `role_id`, `status`) VALUES
-('admin', '$2a$10$N.zmdr9k7uOCQb376NoUnuTJ8iAt6Z5EHsM8lE9lBOsl7iKTVKIUi', '系统管理员', '13800138000', 'admin@example.com', 1, 1);
+('admin', '$2a$10$N.zmdr9k7uOCQb376NoUnuTJ8iAt6Z5EHsM8lE9lBOsl7iAt6Z5EH', '系统管理员', '13800138000', 'admin@example.com', 1, 1);
 
 -- 配件表
 CREATE TABLE IF NOT EXISTS `part` (

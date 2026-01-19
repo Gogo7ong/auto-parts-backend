@@ -37,6 +37,9 @@ public class SalesOrder {
 
     private String remark;
 
+    @TableLogic
+    private Integer deleted;
+
     @TableField(fill = FieldFill.INSERT)
     private LocalDateTime createTime;
 
