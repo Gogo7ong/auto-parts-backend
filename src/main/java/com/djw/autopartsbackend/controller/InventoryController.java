@@ -3,6 +3,7 @@ package com.djw.autopartsbackend.controller;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.djw.autopartsbackend.common.PageResult;
 import com.djw.autopartsbackend.common.Result;
+import com.djw.autopartsbackend.dto.InventoryDTO;
 import com.djw.autopartsbackend.entity.Inventory;
 import com.djw.autopartsbackend.service.InventoryService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -11,6 +12,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import java.util.Map;
 
 /**
  * @author dengjiawen
@@ -26,12 +28,13 @@ public class InventoryController {
 
     @Operation(summary = "分页查询库存列表")
     @GetMapping("/page")
-    public Result<PageResult<Inventory>> page(
+    public Result<PageResult<InventoryDTO>> page(
             @RequestParam(defaultValue = "1") Integer page,
             @RequestParam(defaultValue = "10") Integer pageSize,
-            @RequestParam(required = false) String keyword) {
-        Page<Inventory> pagination = new Page<>(page, pageSize);
-        Page<Inventory> result = inventoryService.pageQuery(pagination, keyword);
+            @RequestParam(required = false) String keyword,
+            @RequestParam(required = false, defaultValue = "false") Boolean lowStock) {
+        Page<InventoryDTO> pagination = new Page<>(page, pageSize);
+        Page<InventoryDTO> result = inventoryService.pageQueryWithPartInfo(pagination, keyword, lowStock);
         return Result.success(PageResult.of(result.getTotal(), result.getRecords()));
     }
 
@@ -44,9 +47,19 @@ public class InventoryController {
 
     @Operation(summary = "获取低库存预警配件列表")
     @GetMapping("/low-stock")
-    public Result<List<Inventory>> getLowStockParts() {
-        List<Inventory> list = inventoryService.getLowStockParts();
+    public Result<List<InventoryDTO>> getLowStockParts() {
+        List<InventoryDTO> list = inventoryService.getLowStockPartsWithInfo();
         return Result.success(list);
+    }
+
+    @Operation(summary = "调整库存")
+    @PostMapping("/adjust")
+    public Result<Void> adjustInventory(@RequestBody Map<String, Object> data) {
+        Long partId = Long.valueOf(data.get("partId").toString());
+        Integer adjustQuantity = Integer.valueOf(data.get("adjustQuantity").toString());
+        String reason = data.get("reason").toString();
+        boolean success = inventoryService.adjustStock(partId, adjustQuantity, reason);
+        return success ? Result.success() : Result.error("调整失败");
     }
 
     @Operation(summary = "更新库存数量")
