@@ -5,6 +5,7 @@ import com.djw.autopartsbackend.common.PageResult;
 import com.djw.autopartsbackend.common.Result;
 import com.djw.autopartsbackend.dto.PurchaseOrderDTO;
 import com.djw.autopartsbackend.entity.PurchaseOrder;
+import com.djw.autopartsbackend.security.RequireRole;
 import com.djw.autopartsbackend.service.PurchaseOrderService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -55,6 +56,7 @@ public class PurchaseOrderController {
 
     @Operation(summary = "新增采购订单（包含明细）")
     @PostMapping("/with-items")
+    @RequireRole({"ADMIN", "WAREHOUSE"})
     public Result<Void> addWithItems(@RequestBody PurchaseOrderDTO dto, HttpServletRequest request) {
         // 设置创建人信息
         Map<String, Object> userInfo = getUserInfo(request);
@@ -71,6 +73,7 @@ public class PurchaseOrderController {
 
     @Operation(summary = "新增采购订单")
     @PostMapping
+    @RequireRole({"ADMIN", "WAREHOUSE"})
     public Result<Void> add(@RequestBody PurchaseOrder order, HttpServletRequest request) {
         // 自动生成订单编号
         if (order.getOrderNo() == null || order.getOrderNo().isEmpty()) {
@@ -115,6 +118,7 @@ public class PurchaseOrderController {
 
     @Operation(summary = "更新采购订单")
     @PutMapping
+    @RequireRole({"ADMIN", "WAREHOUSE"})
     public Result<Void> update(@RequestBody PurchaseOrder order) {
         purchaseOrderService.updateById(order);
         return Result.success();
@@ -122,6 +126,7 @@ public class PurchaseOrderController {
 
     @Operation(summary = "审核采购订单")
     @PutMapping("/{id}/approve")
+    @RequireRole({"ADMIN"})
     public Result<Void> approve(@PathVariable Long id, @RequestParam Long approveUserId, @RequestParam String approveUserName) {
         boolean success = purchaseOrderService.approveOrder(id, approveUserId, approveUserName);
         return success ? Result.success() : Result.error("审核失败");
@@ -129,6 +134,7 @@ public class PurchaseOrderController {
 
     @Operation(summary = "完成采购订单")
     @PutMapping("/{id}/complete")
+    @RequireRole({"ADMIN"})
     public Result<Void> complete(@PathVariable Long id) {
         boolean success = purchaseOrderService.completeOrder(id);
         return success ? Result.success() : Result.error("操作失败");
@@ -136,6 +142,7 @@ public class PurchaseOrderController {
 
     @Operation(summary = "删除采购订单")
     @DeleteMapping("/{id}")
+    @RequireRole({"ADMIN"})
     public Result<Void> delete(@PathVariable Long id) {
         purchaseOrderService.removeById(id);
         return Result.success();

@@ -5,6 +5,7 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.djw.autopartsbackend.common.PageResult;
 import com.djw.autopartsbackend.common.Result;
 import com.djw.autopartsbackend.entity.Part;
+import com.djw.autopartsbackend.security.RequireRole;
 import com.djw.autopartsbackend.service.PartService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -56,6 +57,7 @@ public class PartController {
 
     @Operation(summary = "新增配件")
     @PostMapping
+    @RequireRole({"ADMIN", "WAREHOUSE"})
     public Result<Void> add(@RequestBody Part part) {
         if (partService.checkPartCodeExists(part.getPartCode(), null)) {
             return Result.error("配件编号已存在");
@@ -66,6 +68,7 @@ public class PartController {
 
     @Operation(summary = "更新配件信息")
     @PutMapping
+    @RequireRole({"ADMIN", "WAREHOUSE"})
     public Result<Void> update(@RequestBody Part part) {
         if (partService.checkPartCodeExists(part.getPartCode(), part.getId())) {
             return Result.error("配件编号已存在");
@@ -76,6 +79,7 @@ public class PartController {
 
     @Operation(summary = "删除配件")
     @DeleteMapping("/{id}")
+    @RequireRole({"ADMIN", "WAREHOUSE"})
     public Result<Void> delete(@PathVariable Long id) {
         partService.removeById(id);
         return Result.success();

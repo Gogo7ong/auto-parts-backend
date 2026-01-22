@@ -5,6 +5,7 @@ import com.djw.autopartsbackend.common.PageResult;
 import com.djw.autopartsbackend.common.Result;
 import com.djw.autopartsbackend.dto.SalesOrderDTO;
 import com.djw.autopartsbackend.entity.SalesOrder;
+import com.djw.autopartsbackend.security.RequireRole;
 import com.djw.autopartsbackend.service.SalesOrderService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -52,6 +53,7 @@ public class SalesOrderController {
 
     @Operation(summary = "新增销售订单（包含明细）")
     @PostMapping("/with-items")
+    @RequireRole({"ADMIN", "SALESMAN"})
     public Result<Void> addWithItems(@RequestBody SalesOrderDTO dto) {
         salesOrderService.createOrderWithItems(dto);
         return Result.success();
@@ -59,6 +61,7 @@ public class SalesOrderController {
 
     @Operation(summary = "新增销售订单")
     @PostMapping
+    @RequireRole({"ADMIN", "SALESMAN"})
     public Result<Void> add(@RequestBody SalesOrder order) {
         salesOrderService.save(order);
         return Result.success();
@@ -66,6 +69,7 @@ public class SalesOrderController {
 
     @Operation(summary = "更新销售订单")
     @PutMapping
+    @RequireRole({"ADMIN", "SALESMAN"})
     public Result<Void> update(@RequestBody SalesOrder order) {
         salesOrderService.updateById(order);
         return Result.success();
@@ -73,6 +77,7 @@ public class SalesOrderController {
 
     @Operation(summary = "出库")
     @PutMapping("/{id}/ship")
+    @RequireRole({"ADMIN", "WAREHOUSE"})
     public Result<Void> ship(@PathVariable Long id, @RequestParam Long warehouseUserId, @RequestParam String warehouseUserName) {
         boolean success = salesOrderService.shipOrder(id, warehouseUserId, warehouseUserName);
         return success ? Result.success() : Result.error("出库失败");
@@ -80,6 +85,7 @@ public class SalesOrderController {
 
     @Operation(summary = "完成销售订单")
     @PutMapping("/{id}/complete")
+    @RequireRole({"ADMIN", "SALESMAN"})
     public Result<Void> complete(@PathVariable Long id) {
         boolean success = salesOrderService.completeOrder(id);
         return success ? Result.success() : Result.error("操作失败");
@@ -87,6 +93,7 @@ public class SalesOrderController {
 
     @Operation(summary = "退货")
     @PutMapping("/{id}/return")
+    @RequireRole({"ADMIN", "WAREHOUSE"})
     public Result<Void> returnOrder(@PathVariable Long id) {
         boolean success = salesOrderService.returnOrder(id);
         return success ? Result.success() : Result.error("操作失败");
@@ -94,6 +101,7 @@ public class SalesOrderController {
 
     @Operation(summary = "删除销售订单")
     @DeleteMapping("/{id}")
+    @RequireRole({"ADMIN"})
     public Result<Void> delete(@PathVariable Long id) {
         salesOrderService.removeById(id);
         return Result.success();

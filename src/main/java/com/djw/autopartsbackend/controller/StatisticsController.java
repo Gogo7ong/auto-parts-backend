@@ -2,6 +2,7 @@ package com.djw.autopartsbackend.controller;
 
 import com.djw.autopartsbackend.common.Result;
 import com.djw.autopartsbackend.dto.*;
+import com.djw.autopartsbackend.security.RequireRole;
 import com.djw.autopartsbackend.service.ExportService;
 import com.djw.autopartsbackend.service.StatisticsService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -67,6 +68,7 @@ public class StatisticsController {
 
     @Operation(summary = "导出出入库统计报表")
     @GetMapping("/export/inventory")
+    @RequireRole({"ADMIN"})
     public void exportInventoryStatistics(
             HttpServletResponse response,
             @RequestParam @DateTimeFormat(pattern = "yyyy-MM-dd") LocalDate startDate,
@@ -77,12 +79,14 @@ public class StatisticsController {
 
     @Operation(summary = "导出库存周转率统计报表")
     @GetMapping("/export/turnover-rate")
+    @RequireRole({"ADMIN"})
     public void exportTurnoverRateStatistics(HttpServletResponse response) throws Exception {
         exportService.exportTurnoverRateStatistics(response);
     }
 
     @Operation(summary = "导出销售统计报表")
     @GetMapping("/export/sales")
+    @RequireRole({"ADMIN"})
     public void exportSalesStatistics(
             HttpServletResponse response,
             @RequestParam @DateTimeFormat(pattern = "yyyy-MM-dd") LocalDate startDate,
@@ -93,6 +97,7 @@ public class StatisticsController {
 
     @Operation(summary = "导出采购统计报表")
     @GetMapping("/export/purchase")
+    @RequireRole({"ADMIN"})
     public void exportPurchaseStatistics(
             HttpServletResponse response,
             @RequestParam @DateTimeFormat(pattern = "yyyy-MM-dd") LocalDate startDate,

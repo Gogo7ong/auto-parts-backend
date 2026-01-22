@@ -5,6 +5,7 @@ import com.djw.autopartsbackend.common.PageResult;
 import com.djw.autopartsbackend.common.Result;
 import com.djw.autopartsbackend.dto.InventoryDTO;
 import com.djw.autopartsbackend.entity.Inventory;
+import com.djw.autopartsbackend.security.RequireRole;
 import com.djw.autopartsbackend.service.InventoryService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -54,6 +55,7 @@ public class InventoryController {
 
     @Operation(summary = "调整库存")
     @PostMapping("/adjust")
+    @RequireRole({"ADMIN", "WAREHOUSE"})
     public Result<Void> adjustInventory(@RequestBody Map<String, Object> data) {
         Long partId = Long.valueOf(data.get("partId").toString());
         Integer adjustQuantity = Integer.valueOf(data.get("adjustQuantity").toString());
@@ -64,6 +66,7 @@ public class InventoryController {
 
     @Operation(summary = "更新库存数量")
     @PutMapping("/stock")
+    @RequireRole({"ADMIN", "WAREHOUSE"})
     public Result<Void> updateStock(@RequestParam Long partId, @RequestParam Integer quantity) {
         boolean success = inventoryService.updateStock(partId, quantity);
         return success ? Result.success() : Result.error("更新失败");

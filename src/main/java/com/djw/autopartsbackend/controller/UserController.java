@@ -5,6 +5,7 @@ import com.djw.autopartsbackend.common.PageResult;
 import com.djw.autopartsbackend.common.Result;
 import com.djw.autopartsbackend.dto.LoginDTO;
 import com.djw.autopartsbackend.entity.User;
+import com.djw.autopartsbackend.security.RequireRole;
 import com.djw.autopartsbackend.service.UserService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -59,6 +60,7 @@ public class UserController {
 
     @Operation(summary = "分页查询用户列表")
     @GetMapping("/page")
+    @RequireRole({"ADMIN"})
     public Result<PageResult<User>> page(
             @RequestParam(defaultValue = "1") Integer page,
             @RequestParam(defaultValue = "10") Integer pageSize,
@@ -72,6 +74,7 @@ public class UserController {
 
     @Operation(summary = "根据ID查询用户详情")
     @GetMapping("/{id}")
+    @RequireRole({"ADMIN"})
     public Result<User> getById(@PathVariable Long id) {
         User user = userService.getById(id);
         return Result.success(user);
@@ -79,6 +82,7 @@ public class UserController {
 
     @Operation(summary = "新增用户")
     @PostMapping
+    @RequireRole({"ADMIN"})
     public Result<Void> add(@RequestBody User user) {
         if (userService.checkUsernameExists(user.getUsername(), null)) {
             return Result.error("用户名已存在");
@@ -89,6 +93,7 @@ public class UserController {
 
     @Operation(summary = "更新用户信息")
     @PutMapping
+    @RequireRole({"ADMIN"})
     public Result<Void> update(@RequestBody User user) {
         if (userService.checkUsernameExists(user.getUsername(), user.getId())) {
             return Result.error("用户名已存在");
@@ -99,6 +104,7 @@ public class UserController {
 
     @Operation(summary = "删除用户")
     @DeleteMapping("/{id}")
+    @RequireRole({"ADMIN"})
     public Result<Void> delete(@PathVariable Long id) {
         userService.removeById(id);
         return Result.success();
