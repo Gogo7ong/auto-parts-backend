@@ -32,4 +32,16 @@ public class InventoryLog {
 
     @TableField(fill = FieldFill.INSERT)
     private LocalDateTime createTime;
+
+    /**
+     * 配件编号（非数据库字段，关联查询填充）
+     */
+    @TableField(exist = false)
+    private String partNo;
+
+    /**
+     * 配件名称（非数据库字段，关联查询填充）
+     */
+    @TableField(exist = false)
+    private String partName;
 }

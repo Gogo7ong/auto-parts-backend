@@ -25,12 +25,7 @@ public class InventoryLogServiceImpl extends ServiceImpl<InventoryLogMapper, Inv
 
     @Override
     public Page<InventoryLog> pageQuery(Page<InventoryLog> page, Long partId, String operationType, String relatedOrderNo) {
-        LambdaQueryWrapper<InventoryLog> wrapper = new LambdaQueryWrapper<>();
-        wrapper.eq(partId != null, InventoryLog::getPartId, partId)
-                .eq(StringUtils.hasText(operationType), InventoryLog::getOperationType, operationType)
-                .eq(StringUtils.hasText(relatedOrderNo), InventoryLog::getRelatedOrderNo, relatedOrderNo)
-                .orderByDesc(InventoryLog::getCreateTime);
-        return this.page(page, wrapper);
+        return baseMapper.pageQueryWithPart(page, partId, operationType, relatedOrderNo);
     }
 
     @Override
