@@ -16,7 +16,9 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
 import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.List;
+import java.util.Optional;
 
 /**
  * @author dengjiawen
@@ -52,18 +54,82 @@ public class SalesOrderServiceImpl extends ServiceImpl<SalesOrderMapper, SalesOr
     @Transactional(rollbackFor = Exception.class)
     public boolean createOrderWithItems(SalesOrderDTO dto) {
         SalesOrder order = dto.getOrder();
+        if (order.getOrderNo() == null || order.getOrderNo().isEmpty()) {
+            order.setOrderNo(generateOrderNo());
+        }
         order.setStatus("PENDING");
         order.setCreateTime(LocalDateTime.now());
+        order.setTotalAmount(java.math.BigDecimal.ZERO);
         this.save(order);
 
         List<SalesOrderItem> items = dto.getItems();
         if (items != null && !items.isEmpty()) {
+            java.math.BigDecimal totalAmount = java.math.BigDecimal.ZERO;
             for (SalesOrderItem item : items) {
                 item.setOrderId(order.getId());
+                if (item.getTotalPrice() == null) {
+                    java.math.BigDecimal unitPrice = Optional.ofNullable(item.getUnitPrice()).orElse(java.math.BigDecimal.ZERO);
+                    int qty = Optional.ofNullable(item.getQuantity()).orElse(0);
+                    item.setTotalPrice(unitPrice.multiply(new java.math.BigDecimal(qty)));
+                }
+                if (item.getUnitPrice() == null && item.getQuantity() != null && item.getQuantity() > 0 && item.getTotalPrice() != null) {
+                    item.setUnitPrice(item.getTotalPrice().divide(new java.math.BigDecimal(item.getQuantity()), 2, java.math.RoundingMode.HALF_UP));
+                }
                 salesOrderItemMapper.insert(item);
+                totalAmount = totalAmount.add(Optional.ofNullable(item.getTotalPrice()).orElse(java.math.BigDecimal.ZERO));
             }
+            order.setTotalAmount(totalAmount);
+            this.updateById(order);
         }
         return true;
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public boolean updateOrderWithItems(Long orderId, SalesOrderDTO dto) {
+        SalesOrder existing = this.getById(orderId);
+        if (existing == null) {
+            return false;
+        }
+
+        SalesOrder order = dto.getOrder();
+        order.setId(orderId);
+        if (order.getOrderNo() == null || order.getOrderNo().isEmpty()) {
+            order.setOrderNo(existing.getOrderNo());
+        }
+        if (order.getStatus() == null || order.getStatus().isEmpty()) {
+            order.setStatus(existing.getStatus());
+        }
+
+        // 重置明细：先删后插（毕设场景足够；如需审计可改为差量更新）
+        LambdaQueryWrapper<SalesOrderItem> deleteWrapper = new LambdaQueryWrapper<>();
+        deleteWrapper.eq(SalesOrderItem::getOrderId, orderId);
+        salesOrderItemMapper.delete(deleteWrapper);
+
+        java.math.BigDecimal totalAmount = java.math.BigDecimal.ZERO;
+        List<SalesOrderItem> items = dto.getItems();
+        if (items != null && !items.isEmpty()) {
+            for (SalesOrderItem item : items) {
+                item.setId(null);
+                item.setOrderId(orderId);
+                if (item.getTotalPrice() == null) {
+                    java.math.BigDecimal unitPrice = Optional.ofNullable(item.getUnitPrice()).orElse(java.math.BigDecimal.ZERO);
+                    int qty = Optional.ofNullable(item.getQuantity()).orElse(0);
+                    item.setTotalPrice(unitPrice.multiply(new java.math.BigDecimal(qty)));
+                }
+                salesOrderItemMapper.insert(item);
+                totalAmount = totalAmount.add(Optional.ofNullable(item.getTotalPrice()).orElse(java.math.BigDecimal.ZERO));
+            }
+        }
+
+        order.setTotalAmount(totalAmount);
+        return this.updateById(order);
+    }
+
+    private String generateOrderNo() {
+        String dateStr = java.time.LocalDate.now().format(DateTimeFormatter.ofPattern("yyyyMMdd"));
+        int randomNum = (int) (Math.random() * 900) + 100;
+        return "SO" + dateStr + randomNum;
     }
 
     @Override

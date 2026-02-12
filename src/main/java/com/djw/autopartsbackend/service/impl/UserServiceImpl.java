@@ -7,6 +7,7 @@ import com.djw.autopartsbackend.dto.LoginDTO;
 import com.djw.autopartsbackend.entity.User;
 import com.djw.autopartsbackend.mapper.UserMapper;
 import com.djw.autopartsbackend.service.UserService;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
@@ -16,6 +17,12 @@ import org.springframework.util.StringUtils;
  */
 @Service
 public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements UserService {
+
+    private final PasswordEncoder passwordEncoder;
+
+    public UserServiceImpl(PasswordEncoder passwordEncoder) {
+        this.passwordEncoder = passwordEncoder;
+    }
 
     @Override
     public User getByUsername(String username) {
@@ -50,7 +57,7 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
         if (user == null) {
             throw new RuntimeException("用户名或密码错误");
         }
-        if (!loginDTO.getPassword().equals(user.getPassword())) {
+        if (!passwordMatches(loginDTO.getPassword(), user.getPassword(), user.getId())) {
             throw new RuntimeException("用户名或密码错误");
         }
         if (user.getStatus() == 0) {
@@ -58,4 +65,28 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
         }
         return user;
     }
+
+    private boolean passwordMatches(String rawPassword, String storedPassword, Long userId) {
+        if (!StringUtils.hasText(rawPassword) || !StringUtils.hasText(storedPassword)) {
+            return false;
+        }
+
+        if (!looksLikeBcrypt(storedPassword)) {
+            boolean ok = rawPassword.equals(storedPassword);
+            if (ok && userId != null) {
+                User update = new User();
+                update.setId(userId);
+                update.setPassword(passwordEncoder.encode(rawPassword));
+                this.updateById(update);
+            }
+            return ok;
+        }
+
+        return passwordEncoder.matches(rawPassword, storedPassword);
+    }
+
+    private boolean looksLikeBcrypt(String password) {
+        return password.startsWith("$2a$") || password.startsWith("$2b$") || password.startsWith("$2y$");
+    }
 }
+

@@ -6,6 +6,8 @@ import com.djw.autopartsbackend.entity.User;
 import com.djw.autopartsbackend.mapper.RoleMapper;
 import com.djw.autopartsbackend.mapper.UserMapper;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.jsonwebtoken.ExpiredJwtException;
+import io.jsonwebtoken.JwtException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.stereotype.Component;
@@ -22,11 +24,13 @@ public class AuthInterceptor implements HandlerInterceptor {
     private final UserMapper userMapper;
     private final RoleMapper roleMapper;
     private final ObjectMapper objectMapper;
+    private final JwtService jwtService;
 
-    public AuthInterceptor(UserMapper userMapper, RoleMapper roleMapper, ObjectMapper objectMapper) {
+    public AuthInterceptor(UserMapper userMapper, RoleMapper roleMapper, ObjectMapper objectMapper, JwtService jwtService) {
         this.userMapper = userMapper;
         this.roleMapper = roleMapper;
         this.objectMapper = objectMapper;
+        this.jwtService = jwtService;
     }
 
     @Override
@@ -44,15 +48,18 @@ public class AuthInterceptor implements HandlerInterceptor {
         }
 
         String token = request.getHeader("token");
-        if (!StringUtils.hasText(token) || !token.startsWith("token-")) {
+        if (!StringUtils.hasText(token)) {
             writeJson(response, Result.error(401, "未登录"));
             return false;
         }
 
         Long userId;
         try {
-            userId = Long.parseLong(token.substring("token-".length()));
-        } catch (NumberFormatException ex) {
+            userId = jwtService.parseUserId(token);
+        } catch (ExpiredJwtException e) {
+            writeJson(response, Result.error(401, "token已过期"));
+            return false;
+        } catch (JwtException | IllegalArgumentException e) {
             writeJson(response, Result.error(401, "无效的token"));
             return false;
         }

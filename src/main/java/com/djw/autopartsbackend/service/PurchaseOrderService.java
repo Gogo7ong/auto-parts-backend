@@ -21,5 +21,7 @@ public interface PurchaseOrderService extends IService<PurchaseOrder> {
 
     boolean createOrderWithItems(PurchaseOrderDTO dto);
 
+    boolean updateOrderWithItems(Long orderId, PurchaseOrderDTO dto);
+
     PurchaseOrderDTO getOrderWithItems(Long orderId);
 }

@@ -1,6 +1,7 @@
 package com.djw.autopartsbackend.entity;
 
 import com.baomidou.mybatisplus.annotation.*;
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import lombok.Data;
 
 import java.time.LocalDateTime;
@@ -14,6 +15,7 @@ public class User {
 
     private String username;
 
+    @JsonIgnore
     private String password;
 
     private String realName;

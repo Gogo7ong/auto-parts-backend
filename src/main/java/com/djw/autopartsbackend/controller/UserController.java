@@ -5,15 +5,22 @@ import com.djw.autopartsbackend.common.PageResult;
 import com.djw.autopartsbackend.common.Result;
 import com.djw.autopartsbackend.dto.LoginDTO;
 import com.djw.autopartsbackend.entity.User;
+import com.djw.autopartsbackend.security.JwtService;
 import com.djw.autopartsbackend.security.RequireRole;
 import com.djw.autopartsbackend.service.UserService;
+import com.djw.autopartsbackend.vo.UserVO;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import org.springframework.beans.BeanUtils;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 /**
  * @author dengjiawen
@@ -27,29 +34,40 @@ public class UserController {
     @Autowired
     private UserService userService;
 
+    @Autowired
+    private JwtService jwtService;
+
+    @Autowired
+    private PasswordEncoder passwordEncoder;
+
     @Operation(summary = "用户登录")
     @PostMapping("/login")
     public Result<Map<String, Object>> login(@RequestBody LoginDTO loginDTO) {
         User user = userService.login(loginDTO);
+        String token = jwtService.generateToken(user.getId());
         Map<String, Object> data = new HashMap<>();
-        data.put("token", "token-" + user.getId());
-        data.put("user", user);
+        data.put("token", token);
+        data.put("user", toUserVO(user));
         return Result.success(data);
     }
 
     @Operation(summary = "获取当前用户信息")
     @GetMapping("/info")
-    public Result<User> getCurrentUser(@RequestHeader(value = "token", required = false) String token) {
-        if (token == null || token.isEmpty()) {
-            return Result.error("未登录");
+    public Result<UserVO> getCurrentUser(@RequestHeader(value = "token", required = false) String token) {
+        if (!StringUtils.hasText(token)) {
+            return Result.error(401, "未登录");
         }
+        Long userId;
         try {
-            Long userId = Long.parseLong(token.replace("token-", ""));
-            User user = userService.getById(userId);
-            return Result.success(user);
-        } catch (NumberFormatException e) {
-            return Result.error("无效的token");
+            userId = jwtService.parseUserId(token);
+        } catch (Exception e) {
+            return Result.error(401, "无效的token");
         }
+        User user = userService.getById(userId);
+        if (user == null) {
+            return Result.error(401, "账号不存在或已禁用");
+        }
+        return Result.success(toUserVO(user));
     }
 
     @Operation(summary = "用户登出")
@@ -61,7 +79,7 @@ public class UserController {
     @Operation(summary = "分页查询用户列表")
     @GetMapping("/page")
     @RequireRole({"ADMIN"})
-    public Result<PageResult<User>> page(
+    public Result<PageResult<UserVO>> page(
             @RequestParam(defaultValue = "1") Integer page,
             @RequestParam(defaultValue = "10") Integer pageSize,
             @RequestParam(required = false) String username,
@@ -69,15 +87,16 @@ public class UserController {
             @RequestParam(required = false) Long roleId) {
         Page<User> pagination = new Page<>(page, pageSize);
         Page<User> result = userService.pageQuery(pagination, username, realName, roleId);
-        return Result.success(PageResult.of(result.getTotal(), result.getRecords()));
+        List<UserVO> records = result.getRecords().stream().map(this::toUserVO).collect(Collectors.toList());
+        return Result.success(PageResult.of(result.getTotal(), records));
     }
 
     @Operation(summary = "根据ID查询用户详情")
     @GetMapping("/{id}")
     @RequireRole({"ADMIN"})
-    public Result<User> getById(@PathVariable Long id) {
+    public Result<UserVO> getById(@PathVariable Long id) {
         User user = userService.getById(id);
-        return Result.success(user);
+        return Result.success(toUserVO(user));
     }
 
     @Operation(summary = "新增用户")
@@ -87,6 +106,10 @@ public class UserController {
         if (userService.checkUsernameExists(user.getUsername(), null)) {
             return Result.error("用户名已存在");
         }
+        if (!StringUtils.hasText(user.getPassword())) {
+            return Result.error("密码不能为空");
+        }
+        user.setPassword(encodeIfNeeded(user.getPassword()));
         userService.save(user);
         return Result.success();
     }
@@ -97,6 +120,11 @@ public class UserController {
     public Result<Void> update(@RequestBody User user) {
         if (userService.checkUsernameExists(user.getUsername(), user.getId())) {
             return Result.error("用户名已存在");
+        }
+        if (!StringUtils.hasText(user.getPassword())) {
+            user.setPassword(null);
+        } else {
+            user.setPassword(encodeIfNeeded(user.getPassword()));
         }
         userService.updateById(user);
         return Result.success();
@@ -109,4 +137,25 @@ public class UserController {
         userService.removeById(id);
         return Result.success();
     }
+
+    private String encodeIfNeeded(String password) {
+        if (looksLikeBcrypt(password)) {
+            return password;
+        }
+        return passwordEncoder.encode(password);
+    }
+
+    private boolean looksLikeBcrypt(String password) {
+        return password.startsWith("$2a$") || password.startsWith("$2b$") || password.startsWith("$2y$");
+    }
+
+    private UserVO toUserVO(User user) {
+        UserVO vo = new UserVO();
+        if (user == null) {
+            return vo;
+        }
+        BeanUtils.copyProperties(user, vo);
+        return vo;
+    }
 }
+

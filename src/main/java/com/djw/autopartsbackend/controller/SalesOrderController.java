@@ -4,13 +4,23 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.djw.autopartsbackend.common.PageResult;
 import com.djw.autopartsbackend.common.Result;
 import com.djw.autopartsbackend.dto.SalesOrderDTO;
+import com.djw.autopartsbackend.dto.form.OrderItemFormDTO;
+import com.djw.autopartsbackend.dto.form.SalesOrderFormDTO;
 import com.djw.autopartsbackend.entity.SalesOrder;
+import com.djw.autopartsbackend.entity.SalesOrderItem;
+import com.djw.autopartsbackend.mapper.UserMapper;
+import com.djw.autopartsbackend.security.JwtService;
 import com.djw.autopartsbackend.security.RequireRole;
 import com.djw.autopartsbackend.service.SalesOrderService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
+
+import java.math.BigDecimal;
+import java.util.List;
+import java.util.Optional;
+import java.util.stream.Collectors;
 
 /**
  * @author dengjiawen
@@ -23,6 +33,12 @@ public class SalesOrderController {
 
     @Autowired
     private SalesOrderService salesOrderService;
+
+    @Autowired
+    private JwtService jwtService;
+
+    @Autowired
+    private UserMapper userMapper;
 
     @Operation(summary = "分页查询销售订单列表")
     @GetMapping("/page")
@@ -62,9 +78,17 @@ public class SalesOrderController {
     @Operation(summary = "新增销售订单")
     @PostMapping
     @RequireRole({"ADMIN", "SALESMAN"})
-    public Result<Void> add(@RequestBody SalesOrder order) {
-        salesOrderService.save(order);
+    public Result<Void> add(@RequestBody SalesOrderFormDTO form) {
+        salesOrderService.createOrderWithItems(toSalesOrderDTO(form));
         return Result.success();
+    }
+
+    @Operation(summary = "更新销售订单（包含明细）")
+    @PutMapping("/{id}")
+    @RequireRole({"ADMIN", "SALESMAN"})
+    public Result<Void> updateWithItems(@PathVariable Long id, @RequestBody SalesOrderFormDTO form) {
+        boolean success = salesOrderService.updateOrderWithItems(id, toSalesOrderDTO(form));
+        return success ? Result.success() : Result.error("更新失败");
     }
 
     @Operation(summary = "更新销售订单")
@@ -78,7 +102,24 @@ public class SalesOrderController {
     @Operation(summary = "出库")
     @PutMapping("/{id}/ship")
     @RequireRole({"ADMIN", "WAREHOUSE"})
-    public Result<Void> ship(@PathVariable Long id, @RequestParam Long warehouseUserId, @RequestParam String warehouseUserName) {
+    public Result<Void> ship(
+            @PathVariable Long id,
+            @RequestHeader(value = "token", required = false) String token,
+            @RequestParam(required = false) Long warehouseUserId,
+            @RequestParam(required = false) String warehouseUserName) {
+        if (warehouseUserId == null || warehouseUserName == null || warehouseUserName.isEmpty()) {
+            if (token == null || token.isEmpty()) {
+                return Result.error(401, "未登录");
+            }
+            Long userId = jwtService.parseUserId(token);
+            var user = userMapper.selectById(userId);
+            if (user == null) {
+                return Result.error(401, "账号不存在或已禁用");
+            }
+            warehouseUserId = user.getId();
+            warehouseUserName = user.getUsername();
+        }
+
         boolean success = salesOrderService.shipOrder(id, warehouseUserId, warehouseUserName);
         return success ? Result.success() : Result.error("出库失败");
     }
@@ -106,4 +147,35 @@ public class SalesOrderController {
         salesOrderService.removeById(id);
         return Result.success();
     }
+
+    private SalesOrderDTO toSalesOrderDTO(SalesOrderFormDTO form) {
+        SalesOrder order = new SalesOrder();
+        order.setCustomerName(form.getCustomerName());
+        order.setCustomerPhone(form.getCustomerPhone());
+        order.setCustomerAddress(form.getCustomerAddress());
+        order.setRemark(form.getRemark());
+
+        List<SalesOrderItem> items = Optional.ofNullable(form.getItems()).orElse(List.of()).stream()
+                .map(this::toSalesItem)
+                .collect(Collectors.toList());
+
+        SalesOrderDTO dto = new SalesOrderDTO();
+        dto.setOrder(order);
+        dto.setItems(items);
+        return dto;
+    }
+
+    private SalesOrderItem toSalesItem(OrderItemFormDTO item) {
+        SalesOrderItem entity = new SalesOrderItem();
+        entity.setPartId(item.getPartId());
+        entity.setPartCode(item.getPartNo());
+        entity.setPartName(item.getPartName());
+        entity.setQuantity(item.getQuantity());
+        entity.setUnitPrice(item.getPrice());
+        if (item.getPrice() != null && item.getQuantity() != null) {
+            entity.setTotalPrice(item.getPrice().multiply(new BigDecimal(item.getQuantity())));
+        }
+        return entity;
+    }
 }
+

@@ -6,8 +6,8 @@ import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.djw.autopartsbackend.dto.PurchaseOrderDTO;
 import com.djw.autopartsbackend.entity.PurchaseOrder;
 import com.djw.autopartsbackend.entity.PurchaseOrderItem;
-import com.djw.autopartsbackend.mapper.PurchaseOrderMapper;
 import com.djw.autopartsbackend.mapper.PurchaseOrderItemMapper;
+import com.djw.autopartsbackend.mapper.PurchaseOrderMapper;
 import com.djw.autopartsbackend.service.InventoryLogService;
 import com.djw.autopartsbackend.service.PurchaseOrderService;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -15,8 +15,11 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.List;
+import java.util.Optional;
 
 /**
  * @author dengjiawen
@@ -52,30 +55,79 @@ public class PurchaseOrderServiceImpl extends ServiceImpl<PurchaseOrderMapper, P
     @Transactional(rollbackFor = Exception.class)
     public boolean createOrderWithItems(PurchaseOrderDTO dto) {
         PurchaseOrder order = dto.getOrder();
-        
-        // 自动生成订单编号
+
         if (order.getOrderNo() == null || order.getOrderNo().isEmpty()) {
-            String orderNo = generateOrderNo();
-            order.setOrderNo(orderNo);
+            order.setOrderNo(generateOrderNo());
         }
-        
+
         order.setStatus("PENDING");
         order.setCreateTime(LocalDateTime.now());
+        order.setTotalAmount(BigDecimal.ZERO);
         this.save(order);
 
+        BigDecimal totalAmount = BigDecimal.ZERO;
         List<PurchaseOrderItem> items = dto.getItems();
         if (items != null && !items.isEmpty()) {
             for (PurchaseOrderItem item : items) {
                 item.setOrderId(order.getId());
+                if (item.getTotalPrice() == null) {
+                    BigDecimal unitPrice = Optional.ofNullable(item.getUnitPrice()).orElse(BigDecimal.ZERO);
+                    int qty = Optional.ofNullable(item.getQuantity()).orElse(0);
+                    item.setTotalPrice(unitPrice.multiply(new BigDecimal(qty)));
+                }
                 purchaseOrderItemMapper.insert(item);
+                totalAmount = totalAmount.add(Optional.ofNullable(item.getTotalPrice()).orElse(BigDecimal.ZERO));
             }
         }
+
+        order.setTotalAmount(totalAmount);
+        this.updateById(order);
         return true;
     }
-    
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public boolean updateOrderWithItems(Long orderId, PurchaseOrderDTO dto) {
+        PurchaseOrder existing = this.getById(orderId);
+        if (existing == null) {
+            return false;
+        }
+
+        PurchaseOrder order = dto.getOrder();
+        order.setId(orderId);
+        if (!StringUtils.hasText(order.getOrderNo())) {
+            order.setOrderNo(existing.getOrderNo());
+        }
+        if (!StringUtils.hasText(order.getStatus())) {
+            order.setStatus(existing.getStatus());
+        }
+
+        LambdaQueryWrapper<PurchaseOrderItem> deleteWrapper = new LambdaQueryWrapper<>();
+        deleteWrapper.eq(PurchaseOrderItem::getOrderId, orderId);
+        purchaseOrderItemMapper.delete(deleteWrapper);
+
+        BigDecimal totalAmount = BigDecimal.ZERO;
+        List<PurchaseOrderItem> items = dto.getItems();
+        if (items != null && !items.isEmpty()) {
+            for (PurchaseOrderItem item : items) {
+                item.setId(null);
+                item.setOrderId(orderId);
+                if (item.getTotalPrice() == null) {
+                    BigDecimal unitPrice = Optional.ofNullable(item.getUnitPrice()).orElse(BigDecimal.ZERO);
+                    int qty = Optional.ofNullable(item.getQuantity()).orElse(0);
+                    item.setTotalPrice(unitPrice.multiply(new BigDecimal(qty)));
+                }
+                purchaseOrderItemMapper.insert(item);
+                totalAmount = totalAmount.add(Optional.ofNullable(item.getTotalPrice()).orElse(BigDecimal.ZERO));
+            }
+        }
+
+        order.setTotalAmount(totalAmount);
+        return this.updateById(order);
+    }
+
     private String generateOrderNo() {
-        // 生成采购订单编号：PO + 年月日 + 3位随机数
-        String dateStr = java.time.LocalDate.now().format(java.time.format.DateTimeFormatter.ofPattern("yyyyMMdd"));
+        String dateStr = java.time.LocalDate.now().format(DateTimeFormatter.ofPattern("yyyyMMdd"));
         int randomNum = (int) (Math.random() * 900) + 100;
         return "PO" + dateStr + randomNum;
     }
@@ -145,3 +197,4 @@ public class PurchaseOrderServiceImpl extends ServiceImpl<PurchaseOrderMapper, P
         return this.updateById(order);
     }
 }
+

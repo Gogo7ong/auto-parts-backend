@@ -9,13 +9,10 @@ import com.djw.autopartsbackend.entity.Part;
 import com.djw.autopartsbackend.mapper.InventoryMapper;
 import com.djw.autopartsbackend.mapper.PartMapper;
 import com.djw.autopartsbackend.service.InventoryService;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
-import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 import java.util.stream.Collectors;
 
 /**
@@ -25,8 +22,11 @@ import java.util.stream.Collectors;
 @Service
 public class InventoryServiceImpl extends ServiceImpl<InventoryMapper, Inventory> implements InventoryService {
 
-    @Autowired
-    private PartMapper partMapper;
+    private final PartMapper partMapper;
+
+    public InventoryServiceImpl(PartMapper partMapper) {
+        this.partMapper = partMapper;
+    }
 
     @Override
     public Inventory getByPartId(Long partId) {
@@ -61,9 +61,14 @@ public class InventoryServiceImpl extends ServiceImpl<InventoryMapper, Inventory
 
     @Override
     public List<Inventory> getLowStockParts() {
+        // 兼容旧接口：返回 Inventory 列表（不含配件信息）
+        List<InventoryDTO> dtos = baseMapper.listLowStockWithPart();
+        List<Long> partIds = dtos.stream().map(InventoryDTO::getPartId).distinct().collect(Collectors.toList());
+        if (partIds.isEmpty()) {
+            return List.of();
+        }
         LambdaQueryWrapper<Inventory> wrapper = new LambdaQueryWrapper<>();
-        wrapper.inSql(Inventory::getPartId,
-                "SELECT id FROM part WHERE min_stock > 0 AND id IN (SELECT part_id FROM inventory WHERE stock_quantity <= min_stock)");
+        wrapper.in(Inventory::getPartId, partIds);
         return this.list(wrapper);
     }
 
@@ -71,8 +76,17 @@ public class InventoryServiceImpl extends ServiceImpl<InventoryMapper, Inventory
     public Page<Inventory> pageQuery(Page<Inventory> page, String keyword) {
         LambdaQueryWrapper<Inventory> wrapper = new LambdaQueryWrapper<>();
         if (StringUtils.hasText(keyword)) {
-            wrapper.inSql(Inventory::getPartId,
-                    "SELECT id FROM part WHERE part_name LIKE '%" + keyword + "%' OR part_code LIKE '%" + keyword + "%'");
+            LambdaQueryWrapper<Part> partWrapper = new LambdaQueryWrapper<>();
+            partWrapper.select(Part::getId)
+                    .and(w -> w.like(Part::getPartName, keyword).or().like(Part::getPartCode, keyword));
+            List<Part> parts = partMapper.selectList(partWrapper);
+            List<Long> partIds = parts.stream().map(Part::getId).collect(Collectors.toList());
+            if (partIds.isEmpty()) {
+                Page<Inventory> empty = new Page<>(page.getCurrent(), page.getSize(), 0);
+                empty.setRecords(List.of());
+                return empty;
+            }
+            wrapper.in(Inventory::getPartId, partIds);
         }
         wrapper.orderByDesc(Inventory::getLastUpdateTime);
         return this.page(page, wrapper);
@@ -80,68 +94,12 @@ public class InventoryServiceImpl extends ServiceImpl<InventoryMapper, Inventory
 
     @Override
     public Page<InventoryDTO> pageQueryWithPartInfo(Page<InventoryDTO> page, String keyword, Boolean lowStock) {
-        LambdaQueryWrapper<Inventory> wrapper = new LambdaQueryWrapper<>();
-        
-        if (StringUtils.hasText(keyword)) {
-            wrapper.inSql(Inventory::getPartId,
-                    "SELECT id FROM part WHERE part_name LIKE '%" + keyword + "%' OR part_code LIKE '%" + keyword + "%'");
-        }
-        
-        if (lowStock) {
-            wrapper.inSql(Inventory::getPartId,
-                    "SELECT id FROM part WHERE min_stock > 0 AND id IN (SELECT part_id FROM inventory WHERE stock_quantity <= min_stock)");
-        }
-        
-        wrapper.orderByDesc(Inventory::getLastUpdateTime);
-        
-        Page<Inventory> inventoryPage = new Page<>(page.getCurrent(), page.getSize());
-        Page<Inventory> result = this.page(inventoryPage, wrapper);
-        
-        List<InventoryDTO> dtoList = convertToDTOList(result.getRecords());
-        
-        Page<InventoryDTO> dtoPage = new Page<>(page.getCurrent(), page.getSize(), result.getTotal());
-        dtoPage.setRecords(dtoList);
-        
-        return dtoPage;
+        return baseMapper.pageQueryWithPart(page, keyword, lowStock);
     }
 
     @Override
     public List<InventoryDTO> getLowStockPartsWithInfo() {
-        List<Inventory> inventoryList = getLowStockParts();
-        return convertToDTOList(inventoryList);
-    }
-
-    private List<InventoryDTO> convertToDTOList(List<Inventory> inventoryList) {
-        if (inventoryList == null || inventoryList.isEmpty()) {
-            return new ArrayList<>();
-        }
-        
-        List<Long> partIds = inventoryList.stream()
-                .map(Inventory::getPartId)
-                .collect(Collectors.toList());
-        
-        List<Part> partList = partMapper.selectBatchIds(partIds);
-        Map<Long, Part> partMap = partList.stream()
-                .collect(Collectors.toMap(Part::getId, part -> part));
-        
-        return inventoryList.stream().map(inventory -> {
-            InventoryDTO dto = new InventoryDTO();
-            dto.setId(inventory.getId());
-            dto.setPartId(inventory.getPartId());
-            dto.setQuantity(inventory.getStockQuantity());
-            dto.setWarehouseLocation(inventory.getWarehouseLocation());
-            dto.setUpdateTime(inventory.getLastUpdateTime());
-            
-            Part part = partMap.get(inventory.getPartId());
-            if (part != null) {
-                dto.setPartNo(part.getPartCode());
-                dto.setPartName(part.getPartName());
-                dto.setBrand(part.getBrand());
-                dto.setMinQuantity(part.getMinStock());
-                dto.setMaxQuantity(part.getMinStock() * 5);
-            }
-            
-            return dto;
-        }).collect(Collectors.toList());
+        return baseMapper.listLowStockWithPart();
     }
 }
+

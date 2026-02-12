@@ -28,3 +28,10 @@ springdoc:
     path: /doc.html
   api-docs:
     path: /v3/api-docs
+
+jwt:
+  # HS256 密钥，长度至少 32 位；请在部署环境替换为更安全的随机值
+  secret: "Gvji6RJ9+9SqtOu/Zyzib38g7sBFhfQDfh86bLJEDMQ="
+  issuer: "auto-parts-backend"
+  # token 过期时间（秒），默认 8 小时
+  expiration-seconds: 28800

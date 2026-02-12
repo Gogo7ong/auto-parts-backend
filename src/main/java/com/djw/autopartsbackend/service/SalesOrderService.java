@@ -23,5 +23,7 @@ public interface SalesOrderService extends IService<SalesOrder> {
 
     boolean createOrderWithItems(SalesOrderDTO dto);
 
+    boolean updateOrderWithItems(Long orderId, SalesOrderDTO dto);
+
     SalesOrderDTO getOrderWithItems(Long orderId);
 }
