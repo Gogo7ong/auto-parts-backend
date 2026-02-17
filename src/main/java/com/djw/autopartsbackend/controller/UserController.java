@@ -138,6 +138,44 @@ public class UserController {
         return Result.success();
     }
 
+    @Operation(summary = "修改当前用户密码")
+    @PutMapping("/password")
+    public Result<Void> changePassword(
+            @RequestHeader(value = "token", required = false) String token,
+            @RequestBody Map<String, String> passwordData) {
+        if (!StringUtils.hasText(token)) {
+            return Result.error(401, "未登录");
+        }
+        
+        Long userId;
+        try {
+            userId = jwtService.parseUserId(token);
+        } catch (Exception e) {
+            return Result.error(401, "无效的 token");
+        }
+        
+        String oldPassword = passwordData.get("oldPassword");
+        String newPassword = passwordData.get("newPassword");
+        
+        if (!StringUtils.hasText(oldPassword) || !StringUtils.hasText(newPassword)) {
+            return Result.error(400, "密码不能为空");
+        }
+        
+        if (newPassword.length() < 6) {
+            return Result.error(400, "密码长度至少 6 位");
+        }
+        
+        User user = userService.getById(userId);
+        if (user == null || !passwordEncoder.matches(oldPassword, user.getPassword())) {
+            return Result.error(400, "当前密码错误");
+        }
+        
+        user.setPassword(passwordEncoder.encode(newPassword));
+        userService.updateById(user);
+        
+        return Result.success();
+    }
+
     private String encodeIfNeeded(String password) {
         if (looksLikeBcrypt(password)) {
             return password;

@@ -1,37 +1,129 @@
+# ================================
+# 汽车配件管理系统 - 应用配置文件
+# ================================
+
+# --------------------------------
+# 服务器配置
+# --------------------------------
 server:
+  # 服务端口号
   port: 8080
 
+# --------------------------------
+# Spring 应用配置
+# --------------------------------
 spring:
+  # 应用名称
   application:
     name: auto-parts-backend
+  
+  # 数据源配置
   datasource:
+    # MySQL 驱动类
     driver-class-name: com.mysql.cj.jdbc.Driver
+    # 数据库连接 URL
+    # useUnicode=true: 使用 Unicode 字符集
+    # characterEncoding=utf8: 字符编码为 UTF-8
+    # useSSL=false: 不使用 SSL 加密（生产环境建议开启）
+    # serverTimezone=Asia/Shanghai: 服务器时区设置为上海时间
+    # allowPublicKeyRetrieval=true: 允许公钥检索
     url: jdbc:mysql://localhost:3306/auto-parts-backend?useUnicode=true&characterEncoding=utf8&useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true
+    # 数据库用户名
     username: root
+    # 数据库密码（生产环境请使用环境变量或配置中心管理）
     password: 123456
 
+# --------------------------------
+# MyBatis-Plus 配置
+# --------------------------------
 mybatis-plus:
+  # MyBatis 原生配置
   configuration:
+    # 开启驼峰命名转换（数据库下划线转 Java 驼峰）
     map-underscore-to-camel-case: true
+    # SQL 日志实现（生产环境建议关闭或改为文件输出）
     log-impl: org.apache.ibatis.logging.stdout.StdOutImpl
+  
+  # 全局配置
   global-config:
     db-config:
+      # 主键策略：auto 表示数据库自增
       id-type: auto
+      # 逻辑删除字段名
       logic-delete-field: deleted
+      # 逻辑删除值：1 表示已删除
       logic-delete-value: 1
+      # 逻辑未删除值：0 表示未删除
       logic-not-delete-value: 0
+  
+  # Mapper XML 文件位置
   mapper-locations: classpath*:/mapper/**/*.xml
+  
+  # 实体类包路径（用于类型别名）
   type-aliases-package: com.djw.autopartsbackend.entity
 
+# --------------------------------
+# SpringDoc OpenAPI 3 配置（Swagger 文档）
+# --------------------------------
 springdoc:
+  # Swagger UI 配置
   swagger-ui:
+    # Swagger UI 访问路径
     path: /doc.html
+  
+  # API 文档配置
   api-docs:
+    # OpenAPI JSON 访问路径
     path: /v3/api-docs
 
+# --------------------------------
+# JWT 认证配置
+# --------------------------------
 jwt:
-  # HS256 密钥，长度至少 32 位；请在部署环境替换为更安全的随机值
+  # HS256 加密密钥（至少 32 位，生产环境请使用更安全的随机值）
+  # 生成密钥示例：openssl rand -base64 32
   secret: "Gvji6RJ9+9SqtOu/Zyzib38g7sBFhfQDfh86bLJEDMQ="
+  
+  # Token 签发者
   issuer: "auto-parts-backend"
-  # token 过期时间（秒），默认 8 小时
+  
+  # Token 过期时间（秒）
+  # 默认 28800 秒 = 8 小时
   expiration-seconds: 28800
+
+# --------------------------------
+# 日志配置（可选，默认使用 logback-spring.xml）
+# --------------------------------
+# logging:
+#   level:
+#     root: INFO
+#     com.djw.autopartsbackend: DEBUG
+#   file:
+#     name: ./logs/auto-parts-backend.log
+#   logback:
+#     rollingpolicy:
+#       max-file-size: 100MB
+#       max-history: 30
+
+# --------------------------------
+# 多环境配置说明
+# --------------------------------
+# 激活特定环境配置：--spring.profiles.active=dev
+# - dev: 开发环境
+# - test: 测试环境
+# - prod: 生产环境
+# 
+# 生产环境配置示例（application-prod.yml）:
+# server:
+#   port: 8080
+# spring:
+#   datasource:
+#     url: jdbc:mysql://prod-db-host:3306/auto-parts-backend
+#     username: ${DB_USERNAME}
+#     password: ${DB_PASSWORD}
+# jwt:
+#   secret: ${JWT_SECRET}
+#   expiration-seconds: 7200
+# mybatis-plus:
+#   configuration:
+#     log-impl: org.apache.ibatis.logging.nologging.NoLoggingImpl
