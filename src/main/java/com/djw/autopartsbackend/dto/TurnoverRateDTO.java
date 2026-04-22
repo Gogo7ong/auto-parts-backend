@@ -6,7 +6,7 @@ import java.math.BigDecimal;
 
 /**
  * @author dengjiawen
- * @since 2025-01-19
+ * @since 2026-01-19
  */
 @Data
 public class TurnoverRateDTO {

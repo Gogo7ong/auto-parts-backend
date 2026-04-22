@@ -4,6 +4,8 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.djw.autopartsbackend.common.PageResult;
 import com.djw.autopartsbackend.common.Result;
+import com.djw.autopartsbackend.common.annotation.OperationLog;
+import com.djw.autopartsbackend.common.annotation.OperationType;
 import com.djw.autopartsbackend.entity.Part;
 import com.djw.autopartsbackend.security.RequireRole;
 import com.djw.autopartsbackend.service.PartService;
@@ -16,7 +18,7 @@ import java.util.List;
 
 /**
  * @author dengjiawen
- * @since 2025-01-18
+ * @since 2026-01-18
  */
 @Tag(name = "配件管理", description = "配件信息管理接口")
 @RestController
@@ -55,6 +57,7 @@ public class PartController {
         return Result.success(part);
     }
 
+    @OperationLog(module = "配件管理", type = OperationType.CREATE, description = "新增配件")
     @Operation(summary = "新增配件")
     @PostMapping
     @RequireRole({"ADMIN", "WAREHOUSE"})
@@ -66,6 +69,7 @@ public class PartController {
         return Result.success();
     }
 
+    @OperationLog(module = "配件管理", type = OperationType.UPDATE, description = "更新配件信息")
     @Operation(summary = "更新配件信息")
     @PutMapping
     @RequireRole({"ADMIN", "WAREHOUSE"})
@@ -77,6 +81,7 @@ public class PartController {
         return Result.success();
     }
 
+    @OperationLog(module = "配件管理", type = OperationType.DELETE, description = "删除配件")
     @Operation(summary = "删除配件")
     @DeleteMapping("/{id}")
     @RequireRole({"ADMIN", "WAREHOUSE"})

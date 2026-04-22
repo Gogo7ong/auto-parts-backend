@@ -7,7 +7,7 @@ import com.djw.autopartsbackend.entity.User;
 
 /**
  * @author dengjiawen
- * @since 2025-01-18
+ * @since 2026-01-18
  */
 public interface UserService extends IService<User> {
 

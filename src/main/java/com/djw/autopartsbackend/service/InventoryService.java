@@ -9,15 +9,35 @@ import java.util.List;
 
 /**
  * @author dengjiawen
- * @since 2025-01-18
+ * @since 2026-01-18
  */
 public interface InventoryService extends IService<Inventory> {
 
     Inventory getByPartId(Long partId);
 
-    boolean updateStock(Long partId, Integer quantity);
+    /**
+     * 直接设置库存数量
+     *
+     * @param partId     配件ID
+     * @param quantity   目标库存数量
+     * @param operatorId 操作人ID
+     * @param operatorName 操作人名称
+     * @param reason     调整原因
+     * @return 是否成功
+     */
+    boolean updateStock(Long partId, Integer quantity, Long operatorId, String operatorName, String reason);
 
-    boolean adjustStock(Long partId, Integer adjustQuantity, String reason);
+    /**
+     * 调整库存数量
+     *
+     * @param partId       配件ID
+     * @param adjustQuantity 调整数量，正数表示增加，负数表示减少
+     * @param reason        调整原因
+     * @param operatorId    操作人ID
+     * @param operatorName  操作人名称
+     * @return 是否成功
+     */
+    boolean adjustStock(Long partId, Integer adjustQuantity, String reason, Long operatorId, String operatorName);
 
     List<Inventory> getLowStockParts();
 

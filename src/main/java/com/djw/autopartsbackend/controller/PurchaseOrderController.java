@@ -3,6 +3,8 @@ package com.djw.autopartsbackend.controller;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.djw.autopartsbackend.common.PageResult;
 import com.djw.autopartsbackend.common.Result;
+import com.djw.autopartsbackend.common.annotation.OperationLog;
+import com.djw.autopartsbackend.common.annotation.OperationType;
 import com.djw.autopartsbackend.dto.PurchaseOrderDTO;
 import com.djw.autopartsbackend.dto.form.OrderItemFormDTO;
 import com.djw.autopartsbackend.dto.form.PurchaseOrderFormDTO;
@@ -26,7 +28,7 @@ import java.util.stream.Collectors;
 
 /**
  * @author dengjiawen
- * @since 2025-01-18
+ * @since 2026-01-18
  */
 @Tag(name = "采购管理", description = "采购订单管理接口")
 @RestController
@@ -86,6 +88,7 @@ public class PurchaseOrderController {
         return Result.success();
     }
 
+    @OperationLog(module = "采购管理", type = OperationType.CREATE, description = "新增采购订单")
     @Operation(summary = "新增采购订单")
     @PostMapping
     @RequireRole({"ADMIN", "WAREHOUSE"})
@@ -122,6 +125,7 @@ public class PurchaseOrderController {
         return Result.success();
     }
 
+    @OperationLog(module = "采购管理", type = OperationType.APPROVE, description = "审核采购订单")
     @Operation(summary = "审核采购订单")
     @PutMapping("/{id}/approve")
     @RequireRole({"ADMIN"})
@@ -148,6 +152,7 @@ public class PurchaseOrderController {
         return success ? Result.success() : Result.error("审核失败");
     }
 
+    @OperationLog(module = "采购管理", type = OperationType.UPDATE, description = "完成采购订单")
     @Operation(summary = "完成采购订单")
     @PutMapping("/{id}/complete")
     @RequireRole({"ADMIN"})
@@ -156,6 +161,7 @@ public class PurchaseOrderController {
         return success ? Result.success() : Result.error("操作失败");
     }
 
+    @OperationLog(module = "采购管理", type = OperationType.DELETE, description = "删除采购订单")
     @Operation(summary = "删除采购订单")
     @DeleteMapping("/{id}")
     @RequireRole({"ADMIN"})

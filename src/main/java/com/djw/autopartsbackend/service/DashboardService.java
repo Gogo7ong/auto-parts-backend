@@ -6,7 +6,7 @@ import java.util.Map;
  * 仪表板统计服务接口
  *
  * @author dengjiawen
- * @since 2025-01-27
+ * @since 2026-01-27
  */
 public interface DashboardService {
 

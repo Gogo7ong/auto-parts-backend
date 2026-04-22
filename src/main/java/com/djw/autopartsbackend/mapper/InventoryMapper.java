@@ -6,12 +6,13 @@ import com.djw.autopartsbackend.dto.InventoryDTO;
 import com.djw.autopartsbackend.entity.Inventory;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Select;
+import org.apache.ibatis.annotations.Update;
 
 import java.util.List;
 
 /**
  * @author dengjiawen
- * @since 2025-01-18
+ * @since 2026-01-18
  */
 @Mapper
 public interface InventoryMapper extends BaseMapper<Inventory> {
@@ -60,4 +61,15 @@ public interface InventoryMapper extends BaseMapper<Inventory> {
             "ORDER BY i.stock_quantity ASC, i.last_update_time DESC" +
             "</script>")
     List<InventoryDTO> listLowStockWithPart();
+
+    /**
+     * 按库存变更前数量执行原子更新
+     *
+     * @param partId 配件ID
+     * @param beforeQuantity 变更前库存
+     * @param afterQuantity 变更后库存
+     * @return 更新行数
+     */
+    @Update("UPDATE inventory SET stock_quantity = #{afterQuantity} WHERE part_id = #{partId} AND stock_quantity = #{beforeQuantity}")
+    int updateStockQuantityWithCheck(Long partId, Integer beforeQuantity, Integer afterQuantity);
 }

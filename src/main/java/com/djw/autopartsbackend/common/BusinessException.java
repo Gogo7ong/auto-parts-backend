@@ -4,7 +4,7 @@ import lombok.Getter;
 
 /**
  * @author dengjiawen
- * @since 2025-01-18
+ * @since 2026-01-18
  */
 @Getter
 public class BusinessException extends RuntimeException {

@@ -20,7 +20,7 @@ import java.util.Map;
 
 /**
  * @author dengjiawen
- * @since 2025-01-19
+ * @since 2026-01-19
  */
 @Tag(name = "认证管理", description = "用户认证接口")
 @RestController

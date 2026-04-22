@@ -3,12 +3,14 @@ package com.djw.autopartsbackend.service.impl;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
+import com.djw.autopartsbackend.common.enums.InventoryOperationType;
 import com.djw.autopartsbackend.dto.SalesOrderDTO;
+import com.djw.autopartsbackend.dto.StockOperationParam;
 import com.djw.autopartsbackend.entity.SalesOrder;
 import com.djw.autopartsbackend.entity.SalesOrderItem;
 import com.djw.autopartsbackend.mapper.SalesOrderMapper;
 import com.djw.autopartsbackend.mapper.SalesOrderItemMapper;
-import com.djw.autopartsbackend.service.InventoryLogService;
+import com.djw.autopartsbackend.service.InventoryOperationService;
 import com.djw.autopartsbackend.service.SalesOrderService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -22,7 +24,7 @@ import java.util.Optional;
 
 /**
  * @author dengjiawen
- * @since 2025-01-18
+ * @since 2026-01-18
  */
 @Service
 public class SalesOrderServiceImpl extends ServiceImpl<SalesOrderMapper, SalesOrder> implements SalesOrderService {
@@ -31,7 +33,7 @@ public class SalesOrderServiceImpl extends ServiceImpl<SalesOrderMapper, SalesOr
     private SalesOrderItemMapper salesOrderItemMapper;
 
     @Autowired
-    private InventoryLogService inventoryLogService;
+    private InventoryOperationService inventoryOperationService;
 
     @Override
     public SalesOrder getByOrderNo(String orderNo) {
@@ -165,14 +167,15 @@ public class SalesOrderServiceImpl extends ServiceImpl<SalesOrderMapper, SalesOr
         List<SalesOrderItem> items = salesOrderItemMapper.selectList(wrapper);
 
         for (SalesOrderItem item : items) {
-            inventoryLogService.recordOutbound(
-                    item.getPartId(),
-                    item.getQuantity(),
-                    order.getOrderNo(),
-                    warehouseUserId,
-                    warehouseUserName,
-                    "销售订单出库"
-            );
+            StockOperationParam operationParam = new StockOperationParam();
+            operationParam.setPartId(item.getPartId());
+            operationParam.setOperationType(InventoryOperationType.SALES_OUT);
+            operationParam.setChangeQuantity(-item.getQuantity());
+            operationParam.setRelatedOrderNo(order.getOrderNo());
+            operationParam.setOperatorId(warehouseUserId);
+            operationParam.setOperatorName(warehouseUserName);
+            operationParam.setRemark("销售订单出库");
+            inventoryOperationService.recordOperation(operationParam);
         }
 
         order.setStatus("SHIPPED");
@@ -211,14 +214,15 @@ public class SalesOrderServiceImpl extends ServiceImpl<SalesOrderMapper, SalesOr
         List<SalesOrderItem> items = salesOrderItemMapper.selectList(wrapper);
 
         for (SalesOrderItem item : items) {
-            inventoryLogService.recordInbound(
-                    item.getPartId(),
-                    item.getQuantity(),
-                    order.getOrderNo(),
-                    order.getWarehouseUserId(),
-                    order.getWarehouseUserName(),
-                    "销售订单退货"
-            );
+            StockOperationParam operationParam = new StockOperationParam();
+            operationParam.setPartId(item.getPartId());
+            operationParam.setOperationType(InventoryOperationType.RETURN_IN);
+            operationParam.setChangeQuantity(item.getQuantity());
+            operationParam.setRelatedOrderNo(order.getOrderNo());
+            operationParam.setOperatorId(order.getWarehouseUserId());
+            operationParam.setOperatorName(order.getWarehouseUserName());
+            operationParam.setRemark("销售订单退货");
+            inventoryOperationService.recordOperation(operationParam);
         }
 
         order.setStatus("RETURNED");

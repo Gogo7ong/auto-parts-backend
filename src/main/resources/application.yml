@@ -17,6 +17,13 @@ spring:
   application:
     name: auto-parts-backend
   
+  # Jackson 序列化配置
+  jackson:
+    # 日期格式：yyyy-MM-dd HH:mm:ss
+    date-format: yyyy-MM-dd HH:mm:ss
+    # 时区：东八区（上海时间）
+    time-zone: Asia/Shanghai
+
   # 数据源配置
   datasource:
     # MySQL 驱动类
@@ -32,6 +39,20 @@ spring:
     username: root
     # 数据库密码（生产环境请使用环境变量或配置中心管理）
     password: 123456
+
+  # Redis 配置
+  data:
+    redis:
+      host: localhost
+      port: 6379
+      password:
+      database: 0
+      lettuce:
+        pool:
+          max-active: 8
+          max-idle: 8
+          min-idle: 0
+          max-wait: -1ms
 
 # --------------------------------
 # MyBatis-Plus 配置
@@ -83,13 +104,42 @@ jwt:
   # HS256 加密密钥（至少 32 位，生产环境请使用更安全的随机值）
   # 生成密钥示例：openssl rand -base64 32
   secret: "Gvji6RJ9+9SqtOu/Zyzib38g7sBFhfQDfh86bLJEDMQ="
-  
+
   # Token 签发者
   issuer: "auto-parts-backend"
-  
+
   # Token 过期时间（秒）
   # 默认 28800 秒 = 8 小时
   expiration-seconds: 28800
+
+# --------------------------------
+# AI 智能客服配置（OpenAI兼容API）
+# --------------------------------
+ai:
+  openai:
+    # API Key
+    api-key: sk-b0b1e1add22ad9e8278b295910581ca9ef808cee8a152fe92006c899a83466e3
+    # 模型名称
+    model-name: qwen3-max
+    # API Base URL
+    base-url: https://api.qnaigc.com/v1
+
+# --------------------------------
+# 定时任务配置
+# --------------------------------
+task:
+  # 库存预警任务配置
+  inventory-warning:
+    # 是否启用（true-启用，false-禁用）
+    enabled: true
+    # Cron 表达式：每天上午 9 点执行
+    # 格式：秒 分 时 日 月 周
+    # 示例：
+    #   每小时执行：0 0 * * * ?
+    #   每天 9 点执行：0 0 9 * * ?
+    #   每周一 9 点执行：0 0 9 ? * MON
+    #   每 30 分钟执行：0 */30 * * * ?
+    cron: "0 0 9 * * ?"
 
 # --------------------------------
 # 日志配置（可选，默认使用 logback-spring.xml）

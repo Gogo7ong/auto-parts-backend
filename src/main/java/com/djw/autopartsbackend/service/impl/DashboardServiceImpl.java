@@ -1,6 +1,7 @@
 package com.djw.autopartsbackend.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.djw.autopartsbackend.common.enums.InventoryOperationType;
 import com.djw.autopartsbackend.entity.Inventory;
 import com.djw.autopartsbackend.entity.InventoryLog;
 import com.djw.autopartsbackend.entity.Part;
@@ -22,7 +23,7 @@ import java.util.Map;
  * 仪表板统计服务实现
  *
  * @author dengjiawen
- * @since 2025-01-27
+ * @since 2026-01-27
  */
 @Service
 public class DashboardServiceImpl implements DashboardService {
@@ -48,6 +49,10 @@ public class DashboardServiceImpl implements DashboardService {
         List<Inventory> allInventory = inventoryService.list();
         long lowStockCount = 0;
         for (Inventory inventory : allInventory) {
+            // stockQuantity 可能为 null，必须先判空再做 int 比较，否则自动拆箱抛 NPE
+            if (inventory.getStockQuantity() == null) {
+                continue;
+            }
             Part part = partService.getById(inventory.getPartId());
             if (part != null && part.getMinStock() != null && inventory.getStockQuantity() < part.getMinStock()) {
                 lowStockCount++;
@@ -59,19 +64,21 @@ public class DashboardServiceImpl implements DashboardService {
         LocalDateTime todayStart = LocalDateTime.of(LocalDate.now(), LocalTime.MIN);
         LocalDateTime todayEnd = LocalDateTime.of(LocalDate.now(), LocalTime.MAX);
         LambdaQueryWrapper<InventoryLog> purchaseWrapper = new LambdaQueryWrapper<>();
-        purchaseWrapper.eq(InventoryLog::getOperationType, "IN")
+        purchaseWrapper.eq(InventoryLog::getOperationType, InventoryOperationType.PURCHASE_IN.getCode())
                 .between(InventoryLog::getCreateTime, todayStart, todayEnd);
         long todayPurchase = inventoryLogService.list(purchaseWrapper).stream()
-                .mapToLong(log -> log.getQuantity() * getPartPrice(log.getPartId()))
+                .filter(log -> log.getQuantity() != null)
+                .mapToLong(log -> (long) log.getQuantity() * getPartPrice(log.getPartId()))
                 .sum();
         stats.put("todayPurchase", todayPurchase);
 
         // 今日销售金额
         LambdaQueryWrapper<InventoryLog> salesWrapper = new LambdaQueryWrapper<>();
-        salesWrapper.eq(InventoryLog::getOperationType, "OUT")
+        salesWrapper.eq(InventoryLog::getOperationType, InventoryOperationType.SALES_OUT.getCode())
                 .between(InventoryLog::getCreateTime, todayStart, todayEnd);
         long todaySales = inventoryLogService.list(salesWrapper).stream()
-                .mapToLong(log -> log.getQuantity() * getPartPrice(log.getPartId()))
+                .filter(log -> log.getQuantity() != null)
+                .mapToLong(log -> Math.abs((long) log.getQuantity()) * getPartPrice(log.getPartId()))
                 .sum();
         stats.put("todaySales", todaySales);
 

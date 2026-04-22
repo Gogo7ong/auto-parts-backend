@@ -6,7 +6,7 @@ import org.apache.ibatis.annotations.Mapper;
 
 /**
  * @author dengjiawen
- * @since 2025-01-18
+ * @since 2026-01-18
  */
 @Mapper
 public interface SalesOrderItemMapper extends BaseMapper<SalesOrderItem> {

@@ -3,11 +3,14 @@ package com.djw.autopartsbackend.service.impl;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
+import com.djw.autopartsbackend.common.enums.InventoryOperationType;
 import com.djw.autopartsbackend.dto.InventoryDTO;
+import com.djw.autopartsbackend.dto.StockOperationParam;
 import com.djw.autopartsbackend.entity.Inventory;
 import com.djw.autopartsbackend.entity.Part;
 import com.djw.autopartsbackend.mapper.InventoryMapper;
 import com.djw.autopartsbackend.mapper.PartMapper;
+import com.djw.autopartsbackend.service.InventoryOperationService;
 import com.djw.autopartsbackend.service.InventoryService;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
@@ -17,15 +20,17 @@ import java.util.stream.Collectors;
 
 /**
  * @author dengjiawen
- * @since 2025-01-18
+ * @since 2026-01-18
  */
 @Service
 public class InventoryServiceImpl extends ServiceImpl<InventoryMapper, Inventory> implements InventoryService {
 
     private final PartMapper partMapper;
+    private final InventoryOperationService inventoryOperationService;
 
-    public InventoryServiceImpl(PartMapper partMapper) {
+    public InventoryServiceImpl(PartMapper partMapper, InventoryOperationService inventoryOperationService) {
         this.partMapper = partMapper;
+        this.inventoryOperationService = inventoryOperationService;
     }
 
     @Override
@@ -36,27 +41,29 @@ public class InventoryServiceImpl extends ServiceImpl<InventoryMapper, Inventory
     }
 
     @Override
-    public boolean updateStock(Long partId, Integer quantity) {
-        Inventory inventory = this.getByPartId(partId);
-        if (inventory == null) {
-            return false;
-        }
-        inventory.setStockQuantity(quantity);
-        return this.updateById(inventory);
+    public boolean updateStock(Long partId, Integer quantity, Long operatorId, String operatorName, String reason) {
+        StockOperationParam operationParam = new StockOperationParam();
+        operationParam.setPartId(partId);
+        operationParam.setOperationType(InventoryOperationType.SET);
+        operationParam.setTargetQuantity(quantity);
+        operationParam.setOperatorId(operatorId);
+        operationParam.setOperatorName(operatorName);
+        operationParam.setRemark(reason);
+        inventoryOperationService.recordOperation(operationParam);
+        return true;
     }
 
     @Override
-    public boolean adjustStock(Long partId, Integer adjustQuantity, String reason) {
-        Inventory inventory = this.getByPartId(partId);
-        if (inventory == null) {
-            return false;
-        }
-        Integer newQuantity = inventory.getStockQuantity() + adjustQuantity;
-        if (newQuantity < 0) {
-            return false;
-        }
-        inventory.setStockQuantity(newQuantity);
-        return this.updateById(inventory);
+    public boolean adjustStock(Long partId, Integer adjustQuantity, String reason, Long operatorId, String operatorName) {
+        StockOperationParam operationParam = new StockOperationParam();
+        operationParam.setPartId(partId);
+        operationParam.setOperationType(InventoryOperationType.ADJUST);
+        operationParam.setChangeQuantity(adjustQuantity);
+        operationParam.setOperatorId(operatorId);
+        operationParam.setOperatorName(operatorName);
+        operationParam.setRemark(reason);
+        inventoryOperationService.recordOperation(operationParam);
+        return true;
     }
 
     @Override

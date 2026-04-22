@@ -3,6 +3,8 @@ package com.djw.autopartsbackend.controller;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.djw.autopartsbackend.common.PageResult;
 import com.djw.autopartsbackend.common.Result;
+import com.djw.autopartsbackend.common.annotation.OperationLog;
+import com.djw.autopartsbackend.common.annotation.OperationType;
 import com.djw.autopartsbackend.dto.LoginDTO;
 import com.djw.autopartsbackend.entity.User;
 import com.djw.autopartsbackend.security.JwtService;
@@ -24,7 +26,7 @@ import java.util.stream.Collectors;
 
 /**
  * @author dengjiawen
- * @since 2025-01-18
+ * @since 2026-01-18
  */
 @Tag(name = "用户管理", description = "用户管理接口")
 @RestController
@@ -40,6 +42,7 @@ public class UserController {
     @Autowired
     private PasswordEncoder passwordEncoder;
 
+    @OperationLog(module = "用户管理", type = OperationType.LOGIN, description = "用户登录")
     @Operation(summary = "用户登录")
     @PostMapping("/login")
     public Result<Map<String, Object>> login(@RequestBody LoginDTO loginDTO) {
@@ -99,6 +102,7 @@ public class UserController {
         return Result.success(toUserVO(user));
     }
 
+    @OperationLog(module = "用户管理", type = OperationType.CREATE, description = "新增用户")
     @Operation(summary = "新增用户")
     @PostMapping
     @RequireRole({"ADMIN"})
@@ -114,6 +118,7 @@ public class UserController {
         return Result.success();
     }
 
+    @OperationLog(module = "用户管理", type = OperationType.UPDATE, description = "更新用户信息")
     @Operation(summary = "更新用户信息")
     @PutMapping
     @RequireRole({"ADMIN"})
@@ -130,6 +135,7 @@ public class UserController {
         return Result.success();
     }
 
+    @OperationLog(module = "用户管理", type = OperationType.DELETE, description = "删除用户")
     @Operation(summary = "删除用户")
     @DeleteMapping("/{id}")
     @RequireRole({"ADMIN"})
@@ -138,6 +144,7 @@ public class UserController {
         return Result.success();
     }
 
+    @OperationLog(module = "用户管理", type = OperationType.UPDATE, description = "修改密码", recordParams = false)
     @Operation(summary = "修改当前用户密码")
     @PutMapping("/password")
     public Result<Void> changePassword(

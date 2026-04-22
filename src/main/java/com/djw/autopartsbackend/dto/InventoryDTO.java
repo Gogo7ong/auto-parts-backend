@@ -7,7 +7,7 @@ import java.time.LocalDateTime;
 
 /**
  * @author dengjiawen
- * @since 2025-01-19
+ * @since 2026-01-19
  */
 @Data
 @Schema(description = "库存信息DTO")

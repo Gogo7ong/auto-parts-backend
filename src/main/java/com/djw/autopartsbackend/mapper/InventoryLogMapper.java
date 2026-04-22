@@ -5,9 +5,11 @@ import com.djw.autopartsbackend.entity.InventoryLog;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Select;
 
+import java.time.LocalDateTime;
+
 /**
  * @author dengjiawen
- * @since 2025-01-18
+ * @since 2026-01-18
  */
 @Mapper
 public interface InventoryLogMapper extends BaseMapper<InventoryLog> {
@@ -19,6 +21,8 @@ public interface InventoryLogMapper extends BaseMapper<InventoryLog> {
      * @param partId 配件ID
      * @param operationType 操作类型
      * @param relatedOrderNo 关联单号
+     * @param startTime 开始时间
+     * @param endTime 结束时间
      * @return 包含配件信息的库存流水列表
      */
     @Select("<script>" +
@@ -29,6 +33,8 @@ public interface InventoryLogMapper extends BaseMapper<InventoryLog> {
             "  <if test='partId != null'>AND il.part_id = #{partId}</if>" +
             "  <if test='operationType != null and operationType != \"\"'>AND il.operation_type = #{operationType}</if>" +
             "  <if test='relatedOrderNo != null and relatedOrderNo != \"\"'>AND il.related_order_no = #{relatedOrderNo}</if>" +
+            "  <if test='startTime != null'>AND il.create_time <![CDATA[>=]]> #{startTime}</if>" +
+            "  <if test='endTime != null'>AND il.create_time <![CDATA[<=]]> #{endTime}</if>" +
             "</where>" +
             "ORDER BY il.create_time DESC" +
             "</script>")
@@ -36,5 +42,7 @@ public interface InventoryLogMapper extends BaseMapper<InventoryLog> {
             com.baomidou.mybatisplus.extension.plugins.pagination.Page<InventoryLog> page,
             Long partId,
             String operationType,
-            String relatedOrderNo);
+            String relatedOrderNo,
+            LocalDateTime startTime,
+            LocalDateTime endTime);
 }

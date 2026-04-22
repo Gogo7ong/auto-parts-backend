@@ -3,6 +3,8 @@ package com.djw.autopartsbackend.controller;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.djw.autopartsbackend.common.PageResult;
 import com.djw.autopartsbackend.common.Result;
+import com.djw.autopartsbackend.common.annotation.OperationLog;
+import com.djw.autopartsbackend.common.annotation.OperationType;
 import com.djw.autopartsbackend.dto.SalesOrderDTO;
 import com.djw.autopartsbackend.dto.form.OrderItemFormDTO;
 import com.djw.autopartsbackend.dto.form.SalesOrderFormDTO;
@@ -24,7 +26,7 @@ import java.util.stream.Collectors;
 
 /**
  * @author dengjiawen
- * @since 2025-01-18
+ * @since 2026-01-18
  */
 @Tag(name = "销售管理", description = "销售订单管理接口")
 @RestController
@@ -70,16 +72,24 @@ public class SalesOrderController {
     @Operation(summary = "新增销售订单（包含明细）")
     @PostMapping("/with-items")
     @RequireRole({"ADMIN", "SALESMAN"})
-    public Result<Void> addWithItems(@RequestBody SalesOrderDTO dto) {
+    public Result<Void> addWithItems(
+            @RequestBody SalesOrderDTO dto,
+            @RequestHeader(value = "token", required = false) String token) {
+        fillCreateUserInfo(dto, token);
         salesOrderService.createOrderWithItems(dto);
         return Result.success();
     }
 
+    @OperationLog(module = "销售管理", type = OperationType.CREATE, description = "新增销售订单")
     @Operation(summary = "新增销售订单")
     @PostMapping
     @RequireRole({"ADMIN", "SALESMAN"})
-    public Result<Void> add(@RequestBody SalesOrderFormDTO form) {
-        salesOrderService.createOrderWithItems(toSalesOrderDTO(form));
+    public Result<Void> add(
+            @RequestBody SalesOrderFormDTO form,
+            @RequestHeader(value = "token", required = false) String token) {
+        SalesOrderDTO dto = toSalesOrderDTO(form);
+        fillCreateUserInfo(dto, token);
+        salesOrderService.createOrderWithItems(dto);
         return Result.success();
     }
 
@@ -99,6 +109,7 @@ public class SalesOrderController {
         return Result.success();
     }
 
+    @OperationLog(module = "销售管理", type = OperationType.INVENTORY_OUT, description = "销售出库")
     @Operation(summary = "出库")
     @PutMapping("/{id}/ship")
     @RequireRole({"ADMIN", "WAREHOUSE"})
@@ -124,6 +135,7 @@ public class SalesOrderController {
         return success ? Result.success() : Result.error("出库失败");
     }
 
+    @OperationLog(module = "销售管理", type = OperationType.UPDATE, description = "完成销售订单")
     @Operation(summary = "完成销售订单")
     @PutMapping("/{id}/complete")
     @RequireRole({"ADMIN", "SALESMAN"})
@@ -132,6 +144,7 @@ public class SalesOrderController {
         return success ? Result.success() : Result.error("操作失败");
     }
 
+    @OperationLog(module = "销售管理", type = OperationType.INVENTORY_IN, description = "销售退货")
     @Operation(summary = "退货")
     @PutMapping("/{id}/return")
     @RequireRole({"ADMIN", "WAREHOUSE"})
@@ -140,6 +153,7 @@ public class SalesOrderController {
         return success ? Result.success() : Result.error("操作失败");
     }
 
+    @OperationLog(module = "销售管理", type = OperationType.DELETE, description = "删除销售订单")
     @Operation(summary = "删除销售订单")
     @DeleteMapping("/{id}")
     @RequireRole({"ADMIN"})
@@ -163,6 +177,26 @@ public class SalesOrderController {
         dto.setOrder(order);
         dto.setItems(items);
         return dto;
+    }
+
+    /**
+     * 填充创建用户信息
+     *
+     * @param dto   销售订单DTO
+     * @param token 用户token
+     */
+    private void fillCreateUserInfo(SalesOrderDTO dto, String token) {
+        if (dto.getOrder() == null) {
+            return;
+        }
+        if (token != null && !token.isEmpty()) {
+            Long userId = jwtService.parseUserId(token);
+            var user = userMapper.selectById(userId);
+            if (user != null) {
+                dto.getOrder().setCreateUserId(user.getId());
+                dto.getOrder().setCreateUserName(user.getRealName());
+            }
+        }
     }
 
     private SalesOrderItem toSalesItem(OrderItemFormDTO item) {

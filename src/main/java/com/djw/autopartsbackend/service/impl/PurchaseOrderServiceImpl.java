@@ -3,12 +3,14 @@ package com.djw.autopartsbackend.service.impl;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
+import com.djw.autopartsbackend.common.enums.InventoryOperationType;
 import com.djw.autopartsbackend.dto.PurchaseOrderDTO;
+import com.djw.autopartsbackend.dto.StockOperationParam;
 import com.djw.autopartsbackend.entity.PurchaseOrder;
 import com.djw.autopartsbackend.entity.PurchaseOrderItem;
 import com.djw.autopartsbackend.mapper.PurchaseOrderItemMapper;
 import com.djw.autopartsbackend.mapper.PurchaseOrderMapper;
-import com.djw.autopartsbackend.service.InventoryLogService;
+import com.djw.autopartsbackend.service.InventoryOperationService;
 import com.djw.autopartsbackend.service.PurchaseOrderService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -23,7 +25,7 @@ import java.util.Optional;
 
 /**
  * @author dengjiawen
- * @since 2025-01-18
+ * @since 2026-01-18
  */
 @Service
 public class PurchaseOrderServiceImpl extends ServiceImpl<PurchaseOrderMapper, PurchaseOrder> implements PurchaseOrderService {
@@ -32,7 +34,7 @@ public class PurchaseOrderServiceImpl extends ServiceImpl<PurchaseOrderMapper, P
     private PurchaseOrderItemMapper purchaseOrderItemMapper;
 
     @Autowired
-    private InventoryLogService inventoryLogService;
+    private InventoryOperationService inventoryOperationService;
 
     @Override
     public PurchaseOrder getByOrderNo(String orderNo) {
@@ -51,6 +53,8 @@ public class PurchaseOrderServiceImpl extends ServiceImpl<PurchaseOrderMapper, P
         return this.page(page, wrapper);
     }
 
+    private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(PurchaseOrderServiceImpl.class);
+
     @Override
     @Transactional(rollbackFor = Exception.class)
     public boolean createOrderWithItems(PurchaseOrderDTO dto) {
@@ -64,9 +68,11 @@ public class PurchaseOrderServiceImpl extends ServiceImpl<PurchaseOrderMapper, P
         order.setCreateTime(LocalDateTime.now());
         order.setTotalAmount(BigDecimal.ZERO);
         this.save(order);
+        log.info("创建采购订单成功，订单ID: {}, 订单号: {}", order.getId(), order.getOrderNo());
 
         BigDecimal totalAmount = BigDecimal.ZERO;
         List<PurchaseOrderItem> items = dto.getItems();
+        log.info("采购订单明细数量: {}", items != null ? items.size() : 0);
         if (items != null && !items.isEmpty()) {
             for (PurchaseOrderItem item : items) {
                 item.setOrderId(order.getId());
@@ -76,6 +82,7 @@ public class PurchaseOrderServiceImpl extends ServiceImpl<PurchaseOrderMapper, P
                     item.setTotalPrice(unitPrice.multiply(new BigDecimal(qty)));
                 }
                 purchaseOrderItemMapper.insert(item);
+                log.info("保存采购订单明细成功，明细ID: {}, 配件ID: {}, 数量: {}", item.getId(), item.getPartId(), item.getQuantity());
                 totalAmount = totalAmount.add(Optional.ofNullable(item.getTotalPrice()).orElse(BigDecimal.ZERO));
             }
         }
@@ -152,11 +159,15 @@ public class PurchaseOrderServiceImpl extends ServiceImpl<PurchaseOrderMapper, P
     @Override
     @Transactional(rollbackFor = Exception.class)
     public boolean approveOrder(Long orderId, Long approveUserId, String approveUserName) {
+        log.info("开始审批采购订单，订单ID: {}, 审批人: {}({})", orderId, approveUserName, approveUserId);
         PurchaseOrder order = this.getById(orderId);
         if (order == null) {
+            log.warn("审批失败：订单不存在，订单ID: {}", orderId);
             return false;
         }
+        log.info("订单状态: {}, 订单号: {}", order.getStatus(), order.getOrderNo());
         if (!"PENDING".equals(order.getStatus())) {
+            log.warn("审批失败：订单状态不是PENDING，当前状态: {}", order.getStatus());
             return false;
         }
         order.setStatus("APPROVED");
@@ -169,16 +180,19 @@ public class PurchaseOrderServiceImpl extends ServiceImpl<PurchaseOrderMapper, P
             LambdaQueryWrapper<PurchaseOrderItem> wrapper = new LambdaQueryWrapper<>();
             wrapper.eq(PurchaseOrderItem::getOrderId, orderId);
             List<PurchaseOrderItem> items = purchaseOrderItemMapper.selectList(wrapper);
+            log.info("审批采购订单，订单ID: {}, 明细数量: {}", orderId, items.size());
 
             for (PurchaseOrderItem item : items) {
-                inventoryLogService.recordInbound(
-                        item.getPartId(),
-                        item.getQuantity(),
-                        order.getOrderNo(),
-                        approveUserId,
-                        approveUserName,
-                        "采购订单审核入库"
-                );
+                log.info("生成库存流水，配件ID: {}, 数量: {}", item.getPartId(), item.getQuantity());
+                StockOperationParam operationParam = new StockOperationParam();
+                operationParam.setPartId(item.getPartId());
+                operationParam.setOperationType(InventoryOperationType.PURCHASE_IN);
+                operationParam.setChangeQuantity(item.getQuantity());
+                operationParam.setRelatedOrderNo(order.getOrderNo());
+                operationParam.setOperatorId(approveUserId);
+                operationParam.setOperatorName(approveUserName);
+                operationParam.setRemark("采购订单审核入库");
+                inventoryOperationService.recordOperation(operationParam);
             }
         }
         return success;
@@ -197,4 +211,3 @@ public class PurchaseOrderServiceImpl extends ServiceImpl<PurchaseOrderMapper, P
         return this.updateById(order);
     }
 }
-

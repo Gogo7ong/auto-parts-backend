@@ -1,6 +1,7 @@
 package com.djw.autopartsbackend.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.djw.autopartsbackend.common.enums.InventoryOperationType;
 import com.djw.autopartsbackend.dto.*;
 import com.djw.autopartsbackend.entity.Inventory;
 import com.djw.autopartsbackend.entity.InventoryLog;
@@ -24,7 +25,7 @@ import java.util.stream.Collectors;
 
 /**
  * @author dengjiawen
- * @since 2025-01-19
+ * @since 2026-01-19
  */
 @Service
 public class StatisticsServiceImpl implements StatisticsService {
@@ -71,10 +72,11 @@ public class StatisticsServiceImpl implements StatisticsService {
                 return temp;
             });
 
-            if ("IN".equals(log.getOperationType())) {
+            if (InventoryOperationType.PURCHASE_IN.getCode().equals(log.getOperationType())
+                    || InventoryOperationType.RETURN_IN.getCode().equals(log.getOperationType())) {
                 dto.setInboundQuantity(dto.getInboundQuantity() + log.getQuantity());
-            } else if ("OUT".equals(log.getOperationType())) {
-                dto.setOutboundQuantity(dto.getOutboundQuantity() + log.getQuantity());
+            } else if (InventoryOperationType.SALES_OUT.getCode().equals(log.getOperationType())) {
+                dto.setOutboundQuantity(dto.getOutboundQuantity() + Math.abs(log.getQuantity()));
             }
         }
 
@@ -98,11 +100,11 @@ public class StatisticsServiceImpl implements StatisticsService {
 
             LambdaQueryWrapper<InventoryLog> wrapper = new LambdaQueryWrapper<>();
             wrapper.eq(InventoryLog::getPartId, inventory.getPartId())
-                    .eq(InventoryLog::getOperationType, "OUT")
+                    .eq(InventoryLog::getOperationType, InventoryOperationType.SALES_OUT.getCode())
                     .ge(InventoryLog::getCreateTime, threeMonthsAgo.atStartOfDay());
             List<InventoryLog> outboundLogs = inventoryLogMapper.selectList(wrapper);
 
-            int totalOutbound = outboundLogs.stream().mapToInt(InventoryLog::getQuantity).sum();
+            int totalOutbound = outboundLogs.stream().mapToInt(log -> Math.abs(log.getQuantity())).sum();
             int currentStock = inventory.getStockQuantity();
 
             BigDecimal avgMonthlyOutbound = new BigDecimal(totalOutbound).divide(new BigDecimal(3), 2, RoundingMode.HALF_UP);
@@ -177,7 +179,7 @@ public class StatisticsServiceImpl implements StatisticsService {
     @Override
     public List<PurchaseStatisticsDTO> getPurchaseStatistics(LocalDate startDate, LocalDate endDate, String periodType) {
         LambdaQueryWrapper<InventoryLog> wrapper = new LambdaQueryWrapper<>();
-        wrapper.eq(InventoryLog::getOperationType, "IN")
+        wrapper.eq(InventoryLog::getOperationType, InventoryOperationType.PURCHASE_IN.getCode())
                 .between(InventoryLog::getCreateTime, startDate.atStartOfDay(), endDate.atTime(23, 59, 59));
         List<InventoryLog> logs = inventoryLogMapper.selectList(wrapper);
 
