@@ -94,34 +94,19 @@ public class AiCustomerService {
                     ? conversationId
                     : UUID.randomUUID().toString();
 
-            // 使用异步线程执行，避免阻塞
-            new Thread(() -> {
-                try {
-                    // 使用非流式API获取完整响应（支持工具调用）
-                    String answer = aiAssistant.chat(memoryId, userMessage);
-                    
-                    if (answer != null && !answer.isEmpty()) {
-                        // 模拟流式输出：逐字符发送
-                        for (int i = 0; i < answer.length(); i++) {
-                            char c = answer.charAt(i);
-                            onNext.accept(String.valueOf(c));
-                            // 添加小延迟，模拟打字效果
-                            try {
-                                Thread.sleep(10);
-                            } catch (InterruptedException ignored) {
-                                Thread.currentThread().interrupt();
-                                break;
-                            }
-                        }
-                    }
-                    
-                    log.info("AI流式对话完成: conversationId={}", memoryId);
-                    onComplete.run();
-                } catch (Exception e) {
-                    log.error("AI流式对话失败: {}", e.getMessage(), e);
-                    onError.accept(new BusinessException("AI服务暂时不可用，请稍后重试", e));
-                }
-            }).start();
+            // LangChain4j 1.0.0 已修复 streaming+tools 的 NPE（response cannot be null）
+            // 使用 TokenStream 真实流式输出，streamingChatModel、工具调用、会话记忆均已在 AiConfig 中配置
+            aiAssistant.chatStream(memoryId, userMessage)
+                    .onPartialResponse(onNext)
+                    .onCompleteResponse(response -> {
+                        log.info("AI流式对话完成: conversationId={}", memoryId);
+                        onComplete.run();
+                    })
+                    .onError(throwable -> {
+                        log.error("AI流式对话失败: {}", throwable.getMessage(), throwable);
+                        onError.accept(new BusinessException("AI服务暂时不可用，请稍后重试", throwable));
+                    })
+                    .start();
         } catch (Exception e) {
             log.error("AI流式对话失败: {}", e.getMessage(), e);
             onError.accept(new BusinessException("AI服务暂时不可用，请稍后重试", e));
@@ -151,7 +136,9 @@ public class AiCustomerService {
         var startTime = metricsMonitor.recordCallStart(callId);
 
         try {
-            String context = knowledgeBaseService.searchAsContext(carModel + " " + category);
+            // 临时关闭 RAG 检索增强，后续按配置开关恢复
+            // String context = knowledgeBaseService.searchAsContext(carModel + " " + category);
+            String context = "";
 
             PartRecommendationResp result = aiAssistant.recommendParts(
                     "车型: " + carModel + ", 配件分类: " + category + ", 预算: " + budget,
@@ -205,8 +192,8 @@ public class AiCustomerService {
      * @param content 文档内容
      */
     public void importKnowledge(String content) {
-        log.info("导入知识库文档, 长度: {}", content.length());
-        knowledgeBaseService.importDocument(content);
+        log.warn("RAG功能已临时关闭，跳过知识库文档导入, 长度: {}", content.length());
+        // knowledgeBaseService.importDocument(content);
     }
 
     /**
@@ -216,7 +203,9 @@ public class AiCustomerService {
      * @return 相关文档列表
      */
     public List<String> searchKnowledge(String query) {
-        return knowledgeBaseService.search(query);
+        log.warn("RAG功能已临时关闭，返回空检索结果, query={}", query);
+        // return knowledgeBaseService.search(query);
+        return List.of();
     }
 
     /**

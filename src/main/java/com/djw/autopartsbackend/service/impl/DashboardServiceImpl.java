@@ -9,6 +9,8 @@ import com.djw.autopartsbackend.service.DashboardService;
 import com.djw.autopartsbackend.service.InventoryService;
 import com.djw.autopartsbackend.service.InventoryLogService;
 import com.djw.autopartsbackend.service.PartService;
+import com.djw.autopartsbackend.service.PurchaseOrderService;
+import com.djw.autopartsbackend.service.SalesOrderService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
@@ -18,6 +20,9 @@ import java.time.LocalTime;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+
+import com.djw.autopartsbackend.entity.PurchaseOrder;
+import com.djw.autopartsbackend.entity.SalesOrder;
 
 /**
  * 仪表板统计服务实现
@@ -36,6 +41,12 @@ public class DashboardServiceImpl implements DashboardService {
 
     @Autowired
     private InventoryLogService inventoryLogService;
+
+    @Autowired
+    private PurchaseOrderService purchaseOrderService;
+
+    @Autowired
+    private SalesOrderService salesOrderService;
 
     @Override
     public Map<String, Object> getStats() {
@@ -81,6 +92,25 @@ public class DashboardServiceImpl implements DashboardService {
                 .mapToLong(log -> Math.abs((long) log.getQuantity()) * getPartPrice(log.getPartId()))
                 .sum();
         stats.put("todaySales", todaySales);
+
+        // 库存充足率（库存 >= 最低库存的配件占比）
+        long totalInventoryCount = allInventory.size();
+        long sufficientCount = totalInventoryCount - lowStockCount;
+        int stockSufficientRate = totalInventoryCount > 0
+                ? (int) (sufficientCount * 100 / totalInventoryCount)
+                : 100;
+        stats.put("stockSufficientRate", stockSufficientRate);
+
+        // 待处理订单数（采购订单 PENDING + 销售订单 PENDING）
+        LambdaQueryWrapper<PurchaseOrder> pendingPurchaseWrapper = new LambdaQueryWrapper<>();
+        pendingPurchaseWrapper.eq(PurchaseOrder::getStatus, "PENDING");
+        long pendingPurchase = purchaseOrderService.count(pendingPurchaseWrapper);
+
+        LambdaQueryWrapper<SalesOrder> pendingSalesWrapper = new LambdaQueryWrapper<>();
+        pendingSalesWrapper.eq(SalesOrder::getStatus, "PENDING");
+        long pendingSales = salesOrderService.count(pendingSalesWrapper);
+
+        stats.put("pendingOrders", pendingPurchase + pendingSales);
 
         return stats;
     }

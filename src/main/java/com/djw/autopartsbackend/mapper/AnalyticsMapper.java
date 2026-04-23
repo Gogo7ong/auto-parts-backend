@@ -19,8 +19,8 @@ public interface AnalyticsMapper {
             "    <when test='granularity == \"month\"'>DATE_FORMAT(il.create_time, '%Y-%m')</when>" +
             "    <otherwise>DATE_FORMAT(il.create_time, '%Y-%m-%d')</otherwise>" +
             "  </choose> AS period, " +
-            "  SUM(CASE WHEN il.operation_type = 'IN' THEN il.quantity ELSE 0 END) AS inboundQuantity, " +
-            "  SUM(CASE WHEN il.operation_type = 'OUT' THEN il.quantity ELSE 0 END) AS outboundQuantity " +
+            "  SUM(CASE WHEN il.operation_type IN ('PURCHASE_IN', 'RETURN_IN', 'IN') THEN ABS(il.quantity) ELSE 0 END) AS inboundQuantity, " +
+            "  SUM(CASE WHEN il.operation_type IN ('SALES_OUT', 'OUT') THEN ABS(il.quantity) ELSE 0 END) AS outboundQuantity " +
             "FROM inventory_log il " +
             "WHERE il.create_time BETWEEN #{startTime} AND #{endTime} " +
             "GROUP BY period " +

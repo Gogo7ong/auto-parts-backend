@@ -34,6 +34,7 @@ public class KnowledgeBaseService {
     private EmbeddingModel embeddingModel;
     private EmbeddingStore<TextSegment> embeddingStore;
     private DocumentSplitter documentSplitter;
+    private volatile boolean ragAvailable;
 
     /**
      * 初始化RAG组件
@@ -41,17 +42,17 @@ public class KnowledgeBaseService {
     @PostConstruct
     public void init() {
         log.info("初始化RAG知识库服务...");
-        
-        // 使用本地ONNX模型进行向量化（无需调用外部API）
-        this.embeddingModel = new AllMiniLmL6V2EmbeddingModel();
-        
-        // 使用内存向量存储（生产环境可替换为Redis或Milvus）
-        this.embeddingStore = new InMemoryEmbeddingStore<>();
-        
-        // 文档分割器：每段最多300个token，重叠30个token
-        this.documentSplitter = DocumentSplitters.recursive(300, 30);
-        
-        log.info("RAG知识库服务初始化完成");
+
+        try {
+            this.embeddingModel = new AllMiniLmL6V2EmbeddingModel();
+            this.embeddingStore = new InMemoryEmbeddingStore<>();
+            this.documentSplitter = DocumentSplitters.recursive(300, 30);
+            this.ragAvailable = true;
+            log.info("RAG知识库服务初始化完成");
+        } catch (Throwable e) {
+            this.ragAvailable = false;
+            log.error("RAG知识库初始化失败，将降级为无知识库模式: {}", e.getMessage(), e);
+        }
     }
 
     /**
@@ -61,6 +62,11 @@ public class KnowledgeBaseService {
      * @param metadata 文档元数据（如来源、标题等）
      */
     public void importDocument(String content, Metadata metadata) {
+        if (!ragAvailable) {
+            log.warn("RAG未启用，跳过文档导入");
+            return;
+        }
+
         log.info("导入文档到知识库, 内容长度: {}", content.length());
         
         // 创建文档
@@ -94,6 +100,11 @@ public class KnowledgeBaseService {
      * @return 相关文档片段列表
      */
     public List<String> search(String query, int maxResults, double minScore) {
+        if (!ragAvailable) {
+            log.warn("RAG未启用，返回空检索结果");
+            return List.of();
+        }
+
         log.info("语义检索: query={}, maxResults={}, minScore={}", query, maxResults, minScore);
         
         // 将查询向量化
@@ -158,6 +169,9 @@ public class KnowledgeBaseService {
      */
     public void clear() {
         log.info("清空知识库");
+        if (!ragAvailable) {
+            return;
+        }
         this.embeddingStore = new InMemoryEmbeddingStore<>();
     }
 }

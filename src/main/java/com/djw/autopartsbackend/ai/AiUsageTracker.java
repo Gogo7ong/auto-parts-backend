@@ -1,7 +1,5 @@
 package com.djw.autopartsbackend.ai;
 
-import dev.langchain4j.model.Tokenizer;
-import dev.langchain4j.model.openai.OpenAiTokenizer;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
@@ -21,11 +19,6 @@ import java.util.concurrent.atomic.AtomicLong;
 public class AiUsageTracker {
 
     /**
-     * Tokenizer for counting tokens
-     */
-    private final Tokenizer tokenizer;
-
-    /**
      * 会话Token使用统计
      */
     private final Map<String, SessionUsage> sessionUsageMap = new ConcurrentHashMap<>();
@@ -43,11 +36,6 @@ public class AiUsageTracker {
     private static final double INPUT_PRICE_PER_1K = 0.02;
     private static final double OUTPUT_PRICE_PER_1K = 0.06;
 
-    public AiUsageTracker() {
-        // 使用GPT-3.5的tokenizer作为近似（通义千问类似）
-        this.tokenizer = new OpenAiTokenizer("gpt-3.5-turbo");
-    }
-
     /**
      * 计算文本的Token数量
      *
@@ -58,7 +46,17 @@ public class AiUsageTracker {
         if (text == null || text.isEmpty()) {
             return 0;
         }
-        return tokenizer.estimateTokenCountInText(text);
+        // 简单近似：中文字符每个约1 token，英文/数字每4字符约1 token
+        int chineseCount = 0;
+        int otherCount = 0;
+        for (char c : text.toCharArray()) {
+            if (c >= '\u4e00' && c <= '\u9fff') {
+                chineseCount++;
+            } else if (!Character.isWhitespace(c)) {
+                otherCount++;
+            }
+        }
+        return chineseCount + Math.max(1, otherCount / 4);
     }
 
     /**

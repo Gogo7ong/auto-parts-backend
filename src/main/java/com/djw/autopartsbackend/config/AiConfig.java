@@ -5,8 +5,8 @@ import com.djw.autopartsbackend.ai.AiTools;
 import com.djw.autopartsbackend.ai.RedisChatMemoryStore;
 import dev.langchain4j.memory.chat.ChatMemoryProvider;
 import dev.langchain4j.memory.chat.MessageWindowChatMemory;
-import dev.langchain4j.model.chat.ChatLanguageModel;
-import dev.langchain4j.model.chat.StreamingChatLanguageModel;
+import dev.langchain4j.model.chat.ChatModel;
+import dev.langchain4j.model.chat.StreamingChatModel;
 import dev.langchain4j.model.openai.OpenAiChatModel;
 import dev.langchain4j.model.openai.OpenAiStreamingChatModel;
 import dev.langchain4j.service.AiServices;
@@ -35,11 +35,11 @@ public class AiConfig {
     /**
      * 创建聊天模型 Bean
      *
-     * @return ChatLanguageModel
+     * @return ChatModel
      */
     @Bean
     @ConditionalOnProperty(prefix = "ai.openai", name = "enabled", havingValue = "true", matchIfMissing = true)
-    public ChatLanguageModel chatLanguageModel() {
+    public ChatModel chatModel() {
         log.info("初始化 OpenAiChatModel, 模型名称: {}, Base URL: {}", aiProperties.getModelName(), aiProperties.getBaseUrl());
         return OpenAiChatModel.builder()
                 .apiKey(aiProperties.getApiKey())
@@ -54,11 +54,11 @@ public class AiConfig {
      * 创建流式聊天模型 Bean
      * 用于流式响应，提升用户体验
      *
-     * @return StreamingChatLanguageModel
+     * @return StreamingChatModel
      */
     @Bean
     @ConditionalOnProperty(prefix = "ai.openai", name = "enabled", havingValue = "true", matchIfMissing = true)
-    public StreamingChatLanguageModel streamingChatLanguageModel() {
+    public StreamingChatModel streamingChatModel() {
         log.info("初始化 OpenAiStreamingChatModel, 模型名称: {}, Base URL: {}", aiProperties.getModelName(), aiProperties.getBaseUrl());
         return OpenAiStreamingChatModel.builder()
                 .apiKey(aiProperties.getApiKey())
@@ -73,25 +73,26 @@ public class AiConfig {
      * 创建AI助手服务
      * 集成工具调用和会话记忆功能
      *
-     * @param chatLanguageModel 聊天模型
+     * @param chatModel 聊天模型
+     * @param streamingChatModel 流式聊天模型
      * @return AiAssistant
      */
     @Bean
     @ConditionalOnProperty(prefix = "ai.openai", name = "enabled", havingValue = "true", matchIfMissing = true)
-    public AiAssistant aiAssistant(ChatLanguageModel chatLanguageModel, 
-                                     StreamingChatLanguageModel streamingChatLanguageModel) {
+    public AiAssistant aiAssistant(ChatModel chatModel,
+                                     StreamingChatModel streamingChatModel) {
         log.info("初始化 AiAssistant, 支持工具调用、会话记忆和流式响应");
-        
+
         // 创建会话记忆提供者，每个会话保留最近20条消息
         ChatMemoryProvider chatMemoryProvider = memoryId -> MessageWindowChatMemory.builder()
                 .id(memoryId)
                 .maxMessages(20)
                 .chatMemoryStore(chatMemoryStore)
                 .build();
-        
+
         return AiServices.builder(AiAssistant.class)
-                .chatLanguageModel(chatLanguageModel)
-                .streamingChatLanguageModel(streamingChatLanguageModel)
+                .chatModel(chatModel)
+                .streamingChatModel(streamingChatModel)
                 .tools(aiTools)
                 .chatMemoryProvider(chatMemoryProvider)
                 .build();

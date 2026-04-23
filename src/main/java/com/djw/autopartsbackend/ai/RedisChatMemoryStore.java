@@ -163,6 +163,10 @@ public class RedisChatMemoryStore implements ChatMemoryStore {
             case "USER" -> new UserMessage(wrapper.getContent() != null ? wrapper.getContent() : "");
             case "AI" -> {
                 String content = wrapper.getContent();
+                // 兼容旧数据：过滤历史遗留的 [tool-call] 占位符
+                if (TOOL_CALL_PLACEHOLDER.equals(content)) {
+                    content = null;
+                }
                 List<ToolCallInfo> toolCalls = wrapper.getToolCalls();
 
                 if (toolCalls != null && !toolCalls.isEmpty()) {
@@ -174,7 +178,12 @@ public class RedisChatMemoryStore implements ChatMemoryStore {
                             .arguments(tc.getArgs())
                             .build());
                     }
-                    yield AiMessage.from(normalizeAiContent(content), requests);
+                    // 有正文时附带文本，无正文时只存工具调用结构
+                    if (!isBlank(content)) {
+                        yield AiMessage.from(content, requests);
+                    } else {
+                        yield AiMessage.from(requests);
+                    }
                 }
 
                 if (isBlank(content)) {
@@ -200,7 +209,8 @@ public class RedisChatMemoryStore implements ChatMemoryStore {
 
     private String normalizeAiContent(String content) {
         if (isBlank(content)) {
-            return TOOL_CALL_PLACEHOLDER;
+            // 工具调用消息无正文时，不存占位符，避免被渲染到前端
+            return null;
         }
         return content;
     }

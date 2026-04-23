@@ -2,15 +2,25 @@ package com.djw.autopartsbackend.ai;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.djw.autopartsbackend.dto.InventoryDTO;
+import com.djw.autopartsbackend.dto.PurchaseOrderDTO;
+import com.djw.autopartsbackend.dto.SalesOrderDTO;
 import com.djw.autopartsbackend.entity.Inventory;
+import com.djw.autopartsbackend.entity.InventoryLog;
 import com.djw.autopartsbackend.entity.Part;
+import com.djw.autopartsbackend.entity.PurchaseOrder;
+import com.djw.autopartsbackend.entity.SalesOrder;
+import com.djw.autopartsbackend.service.InventoryLogService;
 import com.djw.autopartsbackend.service.InventoryService;
 import com.djw.autopartsbackend.service.PartService;
+import com.djw.autopartsbackend.service.PurchaseOrderService;
+import com.djw.autopartsbackend.service.SalesOrderService;
 import dev.langchain4j.agent.tool.Tool;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -28,6 +38,9 @@ public class AiTools {
 
     private final PartService partService;
     private final InventoryService inventoryService;
+    private final PurchaseOrderService purchaseOrderService;
+    private final SalesOrderService salesOrderService;
+    private final InventoryLogService inventoryLogService;
 
     /**
      * 查询所有配件品牌
@@ -193,6 +206,285 @@ public class AiTools {
         return info;
     }
 
+    // ==================== 采购订单 ====================
+
+    /**
+     * 按状态查询采购订单
+     *
+     * @param status 订单状态（pending-待审批, approved-已审批, completed-已完成, cancelled-已取消）
+     * @return 采购订单列表
+     */
+    @Tool("按状态查询采购订单，status 可选值：pending（待审批）、approved（已审批）、completed（已完成）、cancelled（已取消）")
+    public List<PurchaseOrderInfo> getPurchaseOrdersByStatus(String status) {
+        log.info("AI工具调用: getPurchaseOrdersByStatus, status={}", status);
+        LambdaQueryWrapper<PurchaseOrder> wrapper = new LambdaQueryWrapper<>();
+        wrapper.eq(PurchaseOrder::getStatus, status)
+                .orderByDesc(PurchaseOrder::getCreateTime)
+                .last("LIMIT 20");
+        return purchaseOrderService.list(wrapper).stream()
+                .map(this::toPurchaseOrderInfo)
+                .collect(Collectors.toList());
+    }
+
+    /**
+     * 按供应商查询采购订单
+     *
+     * @param supplier 供应商名称（支持模糊匹配）
+     * @return 采购订单列表
+     */
+    @Tool("按供应商名称查询采购订单，支持模糊匹配")
+    public List<PurchaseOrderInfo> getPurchaseOrdersBySupplier(String supplier) {
+        log.info("AI工具调用: getPurchaseOrdersBySupplier, supplier={}", supplier);
+        LambdaQueryWrapper<PurchaseOrder> wrapper = new LambdaQueryWrapper<>();
+        wrapper.like(PurchaseOrder::getSupplier, supplier)
+                .orderByDesc(PurchaseOrder::getCreateTime)
+                .last("LIMIT 20");
+        return purchaseOrderService.list(wrapper).stream()
+                .map(this::toPurchaseOrderInfo)
+                .collect(Collectors.toList());
+    }
+
+    /**
+     * 按单号查询采购订单详情（含明细）
+     *
+     * @param orderNo 采购单号
+     * @return 采购订单详情
+     */
+    @Tool("按采购单号查询采购订单详细信息，包含订单明细（配件、数量、单价）")
+    public PurchaseOrderDetail getPurchaseOrderDetail(String orderNo) {
+        log.info("AI工具调用: getPurchaseOrderDetail, orderNo={}", orderNo);
+        PurchaseOrder order = purchaseOrderService.getByOrderNo(orderNo);
+        if (order == null) {
+            return null;
+        }
+        PurchaseOrderDTO dto = purchaseOrderService.getOrderWithItems(order.getId());
+        PurchaseOrderDetail detail = new PurchaseOrderDetail();
+        detail.setOrder(toPurchaseOrderInfo(dto.getOrder()));
+        if (dto.getItems() != null) {
+            detail.setItems(dto.getItems().stream().map(item -> {
+                OrderItemInfo info = new OrderItemInfo();
+                info.setPartCode(item.getPartCode());
+                info.setPartName(item.getPartName());
+                info.setQuantity(item.getQuantity());
+                info.setUnitPrice(item.getUnitPrice() != null ? item.getUnitPrice().toPlainString() : "0");
+                info.setTotalPrice(item.getTotalPrice() != null ? item.getTotalPrice().toPlainString() : "0");
+                return info;
+            }).collect(Collectors.toList()));
+        }
+        return detail;
+    }
+
+    /**
+     * 查询最近N天的采购订单
+     *
+     * @param days 天数（如 7 表示最近7天）
+     * @return 采购订单列表
+     */
+    @Tool("查询最近N天内创建的采购订单，days 为天数整数，如 7 表示最近7天")
+    public List<PurchaseOrderInfo> getRecentPurchaseOrders(int days) {
+        log.info("AI工具调用: getRecentPurchaseOrders, days={}", days);
+        LocalDateTime since = LocalDateTime.now().minusDays(days);
+        LambdaQueryWrapper<PurchaseOrder> wrapper = new LambdaQueryWrapper<>();
+        wrapper.ge(PurchaseOrder::getCreateTime, since)
+                .orderByDesc(PurchaseOrder::getCreateTime)
+                .last("LIMIT 50");
+        return purchaseOrderService.list(wrapper).stream()
+                .map(this::toPurchaseOrderInfo)
+                .collect(Collectors.toList());
+    }
+
+    // ==================== 销售订单 ====================
+
+    /**
+     * 按状态查询销售订单
+     *
+     * @param status 订单状态（pending-待处理, shipped-已发货, completed-已完成, returned-已退货）
+     * @return 销售订单列表
+     */
+    @Tool("按状态查询销售订单，status 可选值：pending（待处理）、shipped（已发货）、completed（已完成）、returned（已退货）")
+    public List<SalesOrderInfo> getSalesOrdersByStatus(String status) {
+        log.info("AI工具调用: getSalesOrdersByStatus, status={}", status);
+        LambdaQueryWrapper<SalesOrder> wrapper = new LambdaQueryWrapper<>();
+        wrapper.eq(SalesOrder::getStatus, status)
+                .orderByDesc(SalesOrder::getCreateTime)
+                .last("LIMIT 20");
+        return salesOrderService.list(wrapper).stream()
+                .map(this::toSalesOrderInfo)
+                .collect(Collectors.toList());
+    }
+
+    /**
+     * 按客户名称查询销售订单
+     *
+     * @param customerName 客户名称（支持模糊匹配）
+     * @return 销售订单列表
+     */
+    @Tool("按客户名称查询销售订单，支持模糊匹配")
+    public List<SalesOrderInfo> getSalesOrdersByCustomer(String customerName) {
+        log.info("AI工具调用: getSalesOrdersByCustomer, customerName={}", customerName);
+        LambdaQueryWrapper<SalesOrder> wrapper = new LambdaQueryWrapper<>();
+        wrapper.like(SalesOrder::getCustomerName, customerName)
+                .orderByDesc(SalesOrder::getCreateTime)
+                .last("LIMIT 20");
+        return salesOrderService.list(wrapper).stream()
+                .map(this::toSalesOrderInfo)
+                .collect(Collectors.toList());
+    }
+
+    /**
+     * 按单号查询销售订单详情（含明细）
+     *
+     * @param orderNo 销售单号
+     * @return 销售订单详情
+     */
+    @Tool("按销售单号查询销售订单详细信息，包含订单明细（配件、数量、单价）")
+    public SalesOrderDetail getSalesOrderDetail(String orderNo) {
+        log.info("AI工具调用: getSalesOrderDetail, orderNo={}", orderNo);
+        SalesOrder order = salesOrderService.getByOrderNo(orderNo);
+        if (order == null) {
+            return null;
+        }
+        SalesOrderDTO dto = salesOrderService.getOrderWithItems(order.getId());
+        SalesOrderDetail detail = new SalesOrderDetail();
+        detail.setOrder(toSalesOrderInfo(dto.getOrder()));
+        if (dto.getItems() != null) {
+            detail.setItems(dto.getItems().stream().map(item -> {
+                OrderItemInfo info = new OrderItemInfo();
+                info.setPartCode(item.getPartCode());
+                info.setPartName(item.getPartName());
+                info.setQuantity(item.getQuantity());
+                info.setUnitPrice(item.getUnitPrice() != null ? item.getUnitPrice().toPlainString() : "0");
+                info.setTotalPrice(item.getTotalPrice() != null ? item.getTotalPrice().toPlainString() : "0");
+                return info;
+            }).collect(Collectors.toList()));
+        }
+        return detail;
+    }
+
+    /**
+     * 查询最近N天的销售订单
+     *
+     * @param days 天数（如 7 表示最近7天）
+     * @return 销售订单列表
+     */
+    @Tool("查询最近N天内创建的销售订单，days 为天数整数，如 7 表示最近7天")
+    public List<SalesOrderInfo> getRecentSalesOrders(int days) {
+        log.info("AI工具调用: getRecentSalesOrders, days={}", days);
+        LocalDateTime since = LocalDateTime.now().minusDays(days);
+        LambdaQueryWrapper<SalesOrder> wrapper = new LambdaQueryWrapper<>();
+        wrapper.ge(SalesOrder::getCreateTime, since)
+                .orderByDesc(SalesOrder::getCreateTime)
+                .last("LIMIT 50");
+        return salesOrderService.list(wrapper).stream()
+                .map(this::toSalesOrderInfo)
+                .collect(Collectors.toList());
+    }
+
+    // ==================== 库存流水 ====================
+
+    /**
+     * 查询最近N天的库存流水
+     *
+     * @param days 天数
+     * @return 库存流水列表
+     */
+    @Tool("查询最近N天的库存出入库流水记录，days 为天数整数")
+    public List<InventoryLogInfo> getRecentInventoryLogs(int days) {
+        log.info("AI工具调用: getRecentInventoryLogs, days={}", days);
+        LocalDateTime since = LocalDateTime.now().minusDays(days);
+        LambdaQueryWrapper<InventoryLog> wrapper = new LambdaQueryWrapper<>();
+        wrapper.ge(InventoryLog::getCreateTime, since)
+                .orderByDesc(InventoryLog::getCreateTime)
+                .last("LIMIT 50");
+        return inventoryLogService.list(wrapper).stream()
+                .map(this::toInventoryLogInfo)
+                .collect(Collectors.toList());
+    }
+
+    /**
+     * 按配件编号查询库存流水
+     *
+     * @param partCode 配件编号
+     * @return 该配件的库存流水列表
+     */
+    @Tool("按配件编号查询该配件的库存出入库流水历史")
+    public List<InventoryLogInfo> getInventoryLogsByPart(String partCode) {
+        log.info("AI工具调用: getInventoryLogsByPart, partCode={}", partCode);
+        Part part = partService.getByPartCode(partCode);
+        if (part == null) {
+            return List.of();
+        }
+        LambdaQueryWrapper<InventoryLog> wrapper = new LambdaQueryWrapper<>();
+        wrapper.eq(InventoryLog::getPartId, part.getId())
+                .orderByDesc(InventoryLog::getCreateTime)
+                .last("LIMIT 30");
+        return inventoryLogService.list(wrapper).stream()
+                .map(this::toInventoryLogInfo)
+                .collect(Collectors.toList());
+    }
+
+    // ==================== 供应商 ====================
+
+    /**
+     * 查询系统中所有供应商名称
+     *
+     * @return 供应商名称列表（去重排序）
+     */
+    @Tool("查询系统中所有供应商的名称列表，供应商信息来自采购订单历史")
+    public List<String> getAllSuppliers() {
+        log.info("AI工具调用: getAllSuppliers");
+        return purchaseOrderService.list(
+                new LambdaQueryWrapper<PurchaseOrder>().select(PurchaseOrder::getSupplier)
+        ).stream()
+                .map(PurchaseOrder::getSupplier)
+                .filter(s -> s != null && !s.isBlank())
+                .distinct()
+                .sorted()
+                .collect(Collectors.toList());
+    }
+
+    // ==================== 私有转换方法 ====================
+
+    private static final DateTimeFormatter DT_FMT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm");
+
+    private PurchaseOrderInfo toPurchaseOrderInfo(PurchaseOrder o) {
+        PurchaseOrderInfo info = new PurchaseOrderInfo();
+        info.setOrderNo(o.getOrderNo());
+        info.setSupplier(o.getSupplier());
+        info.setStatus(o.getStatus());
+        info.setTotalAmount(o.getTotalAmount() != null ? o.getTotalAmount().toPlainString() : "0");
+        info.setCreateUserName(o.getCreateUserName());
+        info.setCreateTime(o.getCreateTime() != null ? o.getCreateTime().format(DT_FMT) : "");
+        info.setRemark(o.getRemark());
+        return info;
+    }
+
+    private SalesOrderInfo toSalesOrderInfo(SalesOrder o) {
+        SalesOrderInfo info = new SalesOrderInfo();
+        info.setOrderNo(o.getOrderNo());
+        info.setCustomerName(o.getCustomerName());
+        info.setCustomerPhone(o.getCustomerPhone());
+        info.setStatus(o.getStatus());
+        info.setTotalAmount(o.getTotalAmount() != null ? o.getTotalAmount().toPlainString() : "0");
+        info.setCreateUserName(o.getCreateUserName());
+        info.setCreateTime(o.getCreateTime() != null ? o.getCreateTime().format(DT_FMT) : "");
+        info.setRemark(o.getRemark());
+        return info;
+    }
+
+    private InventoryLogInfo toInventoryLogInfo(InventoryLog l) {
+        InventoryLogInfo info = new InventoryLogInfo();
+        info.setOperationType(l.getOperationType());
+        info.setQuantity(l.getQuantity());
+        info.setBeforeQuantity(l.getBeforeQuantity());
+        info.setAfterQuantity(l.getAfterQuantity());
+        info.setRelatedOrderNo(l.getRelatedOrderNo());
+        info.setOperatorName(l.getOperatorName());
+        info.setCreateTime(l.getCreateTime() != null ? l.getCreateTime().format(DT_FMT) : "");
+        info.setRemark(l.getRemark());
+        return info;
+    }
+
     /**
      * 转换为PartInfo
      */
@@ -241,5 +533,79 @@ public class AiTools {
         private Integer minStock;
         private String warehouseLocation;
         private Boolean lowStock;
+    }
+
+    /**
+     * 采购订单摘要DTO
+     */
+    @lombok.Data
+    public static class PurchaseOrderInfo {
+        private String orderNo;
+        private String supplier;
+        private String status;
+        private String totalAmount;
+        private String createUserName;
+        private String createTime;
+        private String remark;
+    }
+
+    /**
+     * 采购订单详情DTO（含明细）
+     */
+    @lombok.Data
+    public static class PurchaseOrderDetail {
+        private PurchaseOrderInfo order;
+        private List<OrderItemInfo> items;
+    }
+
+    /**
+     * 销售订单摘要DTO
+     */
+    @lombok.Data
+    public static class SalesOrderInfo {
+        private String orderNo;
+        private String customerName;
+        private String customerPhone;
+        private String status;
+        private String totalAmount;
+        private String createUserName;
+        private String createTime;
+        private String remark;
+    }
+
+    /**
+     * 销售订单详情DTO（含明细）
+     */
+    @lombok.Data
+    public static class SalesOrderDetail {
+        private SalesOrderInfo order;
+        private List<OrderItemInfo> items;
+    }
+
+    /**
+     * 订单明细行DTO（采购/销售通用）
+     */
+    @lombok.Data
+    public static class OrderItemInfo {
+        private String partCode;
+        private String partName;
+        private Integer quantity;
+        private String unitPrice;
+        private String totalPrice;
+    }
+
+    /**
+     * 库存流水DTO
+     */
+    @lombok.Data
+    public static class InventoryLogInfo {
+        private String operationType;
+        private Integer quantity;
+        private Integer beforeQuantity;
+        private Integer afterQuantity;
+        private String relatedOrderNo;
+        private String operatorName;
+        private String createTime;
+        private String remark;
     }
 }
