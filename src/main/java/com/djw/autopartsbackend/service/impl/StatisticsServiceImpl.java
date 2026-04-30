@@ -6,10 +6,12 @@ import com.djw.autopartsbackend.dto.*;
 import com.djw.autopartsbackend.entity.Inventory;
 import com.djw.autopartsbackend.entity.InventoryLog;
 import com.djw.autopartsbackend.entity.Part;
+import com.djw.autopartsbackend.entity.PurchaseOrderItem;
 import com.djw.autopartsbackend.entity.SalesOrderItem;
 import com.djw.autopartsbackend.mapper.InventoryLogMapper;
 import com.djw.autopartsbackend.mapper.InventoryMapper;
 import com.djw.autopartsbackend.mapper.PartMapper;
+import com.djw.autopartsbackend.mapper.PurchaseOrderItemMapper;
 import com.djw.autopartsbackend.mapper.SalesOrderItemMapper;
 import com.djw.autopartsbackend.service.StatisticsService;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -42,6 +44,9 @@ public class StatisticsServiceImpl implements StatisticsService {
     @Autowired
     private SalesOrderItemMapper salesOrderItemMapper;
 
+    @Autowired
+    private PurchaseOrderItemMapper purchaseOrderItemMapper;
+
     @Override
     public List<InventoryStatisticsDTO> getInventoryStatistics(LocalDate startDate, LocalDate endDate, String periodType) {
         LambdaQueryWrapper<InventoryLog> wrapper = new LambdaQueryWrapper<>();
@@ -49,6 +54,7 @@ public class StatisticsServiceImpl implements StatisticsService {
         List<InventoryLog> logs = inventoryLogMapper.selectList(wrapper);
 
         Map<String, InventoryStatisticsDTO> resultMap = new LinkedHashMap<>();
+        Map<Long, BigDecimal> partPriceCache = new HashMap<>();
 
         DateTimeFormatter formatter;
         if ("month".equals(periodType)) {
@@ -75,8 +81,10 @@ public class StatisticsServiceImpl implements StatisticsService {
             if (InventoryOperationType.PURCHASE_IN.getCode().equals(log.getOperationType())
                     || InventoryOperationType.RETURN_IN.getCode().equals(log.getOperationType())) {
                 dto.setInboundQuantity(dto.getInboundQuantity() + log.getQuantity());
+                dto.setInboundAmount(dto.getInboundAmount().add(resolveInventoryLogAmount(log, partPriceCache)));
             } else if (InventoryOperationType.SALES_OUT.getCode().equals(log.getOperationType())) {
                 dto.setOutboundQuantity(dto.getOutboundQuantity() + Math.abs(log.getQuantity()));
+                dto.setOutboundAmount(dto.getOutboundAmount().add(resolveInventoryLogAmount(log, partPriceCache)));
             }
         }
 
@@ -157,9 +165,9 @@ public class StatisticsServiceImpl implements StatisticsService {
         for (Map.Entry<String, List<SalesOrderItem>> entry : groupedByPeriod.entrySet()) {
             List<SalesOrderItem> periodItems = entry.getValue();
             int orderCount = (int) periodItems.stream().map(SalesOrderItem::getOrderId).distinct().count();
-            int totalQuantity = periodItems.stream().mapToInt(SalesOrderItem::getQuantity).sum();
+            int totalQuantity = periodItems.stream().mapToInt(item -> Optional.ofNullable(item.getQuantity()).orElse(0)).sum();
             BigDecimal totalAmount = periodItems.stream()
-                    .map(item -> item.getUnitPrice().multiply(new BigDecimal(item.getQuantity())))
+                    .map(item -> resolveItemAmount(item.getTotalPrice(), item.getUnitPrice(), item.getQuantity()))
                     .reduce(BigDecimal.ZERO, BigDecimal::add);
             BigDecimal avgOrderAmount = orderCount > 0 ? totalAmount.divide(new BigDecimal(orderCount), 2, RoundingMode.HALF_UP) : BigDecimal.ZERO;
 
@@ -178,12 +186,11 @@ public class StatisticsServiceImpl implements StatisticsService {
 
     @Override
     public List<PurchaseStatisticsDTO> getPurchaseStatistics(LocalDate startDate, LocalDate endDate, String periodType) {
-        LambdaQueryWrapper<InventoryLog> wrapper = new LambdaQueryWrapper<>();
-        wrapper.eq(InventoryLog::getOperationType, InventoryOperationType.PURCHASE_IN.getCode())
-                .between(InventoryLog::getCreateTime, startDate.atStartOfDay(), endDate.atTime(23, 59, 59));
-        List<InventoryLog> logs = inventoryLogMapper.selectList(wrapper);
+        LambdaQueryWrapper<PurchaseOrderItem> wrapper = new LambdaQueryWrapper<>();
+        wrapper.between(PurchaseOrderItem::getCreateTime, startDate.atStartOfDay(), endDate.atTime(23, 59, 59));
+        List<PurchaseOrderItem> items = purchaseOrderItemMapper.selectList(wrapper);
 
-        Map<String, List<InventoryLog>> groupedByPeriod = new LinkedHashMap<>();
+        Map<String, List<PurchaseOrderItem>> groupedByPeriod = new LinkedHashMap<>();
         DateTimeFormatter formatter;
 
         if ("day".equals(periodType)) {
@@ -194,19 +201,21 @@ public class StatisticsServiceImpl implements StatisticsService {
             formatter = DateTimeFormatter.ofPattern("yyyy");
         }
 
-        for (InventoryLog log : logs) {
-            String period = log.getCreateTime().format(formatter);
-            groupedByPeriod.computeIfAbsent(period, k -> new ArrayList<>()).add(log);
+        for (PurchaseOrderItem item : items) {
+            String period = item.getCreateTime().format(formatter);
+            groupedByPeriod.computeIfAbsent(period, k -> new ArrayList<>()).add(item);
         }
 
         List<PurchaseStatisticsDTO> result = new ArrayList<>();
-        for (Map.Entry<String, List<InventoryLog>> entry : groupedByPeriod.entrySet()) {
-            List<InventoryLog> periodLogs = entry.getValue();
-            int orderCount = (int) periodLogs.stream().map(InventoryLog::getRelatedOrderNo).filter(Objects::nonNull).distinct().count();
-            int totalQuantity = periodLogs.stream().mapToInt(InventoryLog::getQuantity).sum();
+        for (Map.Entry<String, List<PurchaseOrderItem>> entry : groupedByPeriod.entrySet()) {
+            List<PurchaseOrderItem> periodItems = entry.getValue();
+            int orderCount = (int) periodItems.stream().map(PurchaseOrderItem::getOrderId).filter(Objects::nonNull).distinct().count();
+            int totalQuantity = periodItems.stream().mapToInt(item -> Optional.ofNullable(item.getQuantity()).orElse(0)).sum();
 
-            BigDecimal totalAmount = BigDecimal.ZERO;
-            BigDecimal avgOrderAmount = BigDecimal.ZERO;
+            BigDecimal totalAmount = periodItems.stream()
+                    .map(item -> resolveItemAmount(item.getTotalPrice(), item.getUnitPrice(), item.getQuantity()))
+                    .reduce(BigDecimal.ZERO, BigDecimal::add);
+            BigDecimal avgOrderAmount = orderCount > 0 ? totalAmount.divide(new BigDecimal(orderCount), 2, RoundingMode.HALF_UP) : BigDecimal.ZERO;
 
             PurchaseStatisticsDTO dto = new PurchaseStatisticsDTO();
             dto.setPeriod(entry.getKey());
@@ -219,5 +228,26 @@ public class StatisticsServiceImpl implements StatisticsService {
         }
 
         return result;
+    }
+
+    private BigDecimal resolveItemAmount(BigDecimal totalPrice, BigDecimal unitPrice, Integer quantity) {
+        if (totalPrice != null) {
+            return totalPrice;
+        }
+        if (unitPrice == null || quantity == null) {
+            return BigDecimal.ZERO;
+        }
+        return unitPrice.multiply(new BigDecimal(quantity));
+    }
+
+    private BigDecimal resolveInventoryLogAmount(InventoryLog log, Map<Long, BigDecimal> partPriceCache) {
+        if (log.getPartId() == null || log.getQuantity() == null) {
+            return BigDecimal.ZERO;
+        }
+        BigDecimal unitPrice = partPriceCache.computeIfAbsent(log.getPartId(), partId -> {
+            Part part = partMapper.selectById(partId);
+            return part == null || part.getUnitPrice() == null ? BigDecimal.ZERO : part.getUnitPrice();
+        });
+        return unitPrice.multiply(new BigDecimal(Math.abs(log.getQuantity())));
     }
 }

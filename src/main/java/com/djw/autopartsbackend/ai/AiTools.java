@@ -19,8 +19,12 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeParseException;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -423,6 +427,26 @@ public class AiTools {
                 .collect(Collectors.toList());
     }
 
+    // ==================== 报表导出 ====================
+
+    @Tool("生成销售统计报表导出链接。startDate 和 endDate 使用 yyyy-MM-dd 格式，periodType 可选 day、month、year。dateRangeExpression 用于传递“最近一个月”“本月”“上个月”“最近7天”“最近30天”“今年”“去年”等相对时间表达；如果用户明确给出日期，则传 startDate 和 endDate；如果用户使用相对时间，则优先传 dateRangeExpression。用户要求导出销售报表、销售统计、销售订单统计时调用。")
+    public ExportLinkInfo exportSalesStatistics(String startDate, String endDate, String periodType, String dateRangeExpression) {
+        log.info("AI工具调用: exportSalesStatistics, startDate={}, endDate={}, periodType={}, dateRangeExpression={}", startDate, endDate, periodType, dateRangeExpression);
+        LocalDateRange range = resolveDateRange(dateRangeExpression, startDate, endDate);
+        String period = normalizePeriodType(periodType);
+        String url = "/api/statistics/export/sales" + buildDateQuery(range, period);
+        return exportLink("销售统计报表", url);
+    }
+
+    @Tool("生成采购统计报表导出链接。startDate 和 endDate 使用 yyyy-MM-dd 格式，periodType 可选 day、month、year。dateRangeExpression 用于传递“最近一个月”“本月”“上个月”“最近7天”“最近30天”“今年”“去年”等相对时间表达；如果用户明确给出日期，则传 startDate 和 endDate；如果用户使用相对时间，则优先传 dateRangeExpression。用户要求导出采购报表、采购统计、采购订单统计时调用。")
+    public ExportLinkInfo exportPurchaseStatistics(String startDate, String endDate, String periodType, String dateRangeExpression) {
+        log.info("AI工具调用: exportPurchaseStatistics, startDate={}, endDate={}, periodType={}, dateRangeExpression={}", startDate, endDate, periodType, dateRangeExpression);
+        LocalDateRange range = resolveDateRange(dateRangeExpression, startDate, endDate);
+        String period = normalizePeriodType(periodType);
+        String url = "/api/statistics/export/purchase" + buildDateQuery(range, period);
+        return exportLink("采购统计报表", url);
+    }
+
     // ==================== 供应商 ====================
 
     /**
@@ -446,6 +470,191 @@ public class AiTools {
     // ==================== 私有转换方法 ====================
 
     private static final DateTimeFormatter DT_FMT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm");
+
+    private ExportLinkInfo exportLink(String title, String url) {
+        ExportLinkInfo info = new ExportLinkInfo();
+        info.setTitle(title);
+        info.setUrl(url);
+        info.setMethod("GET");
+        info.setRequiresToken(true);
+        info.setTip("请使用当前登录 token 下载该文件。");
+        return info;
+    }
+
+    private String buildDateQuery(LocalDateRange range, String periodType) {
+        return "?startDate=" + encode(range.startDate().toString())
+                + "&endDate=" + encode(range.endDate().toString())
+                + "&periodType=" + encode(periodType);
+    }
+
+    private String encode(String value) {
+        return URLEncoder.encode(value, StandardCharsets.UTF_8).replace("+", "%20");
+    }
+
+    private LocalDateRange resolveDateRange(String dateRangeExpression, String startDate, String endDate) {
+        LocalDateRange relativeRange = resolveRelativeDateRange(dateRangeExpression);
+        if (relativeRange != null) {
+            return relativeRange;
+        }
+        return resolveDateRange(startDate, endDate);
+    }
+
+    private LocalDateRange resolveDateRange(String startDate, String endDate) {
+        LocalDate now = LocalDate.now();
+        LocalDate start = parseDateOrDefault(startDate, now.minusMonths(1));
+        LocalDate end = parseDateOrDefault(endDate, now);
+        if (start.isAfter(end)) {
+            LocalDate temp = start;
+            start = end;
+            end = temp;
+        }
+        return new LocalDateRange(start, end);
+    }
+
+    private LocalDateRange resolveRelativeDateRange(String dateRangeExpression) {
+        String expression = normalizeDateRangeExpression(dateRangeExpression);
+        if (expression.isEmpty()) {
+            return null;
+        }
+
+        LocalDate now = LocalDate.now();
+        if ("本月".equals(expression)) {
+            return new LocalDateRange(now.withDayOfMonth(1), now);
+        }
+        if ("上个月".equals(expression) || "上月".equals(expression)) {
+            LocalDate start = now.minusMonths(1).withDayOfMonth(1);
+            LocalDate end = now.withDayOfMonth(1).minusDays(1);
+            return new LocalDateRange(start, end);
+        }
+        if ("今年".equals(expression) || "本年".equals(expression)) {
+            return new LocalDateRange(now.withDayOfYear(1), now);
+        }
+        if ("去年".equals(expression) || "上年".equals(expression) || "上一年".equals(expression)) {
+            LocalDate start = now.minusYears(1).withDayOfYear(1);
+            LocalDate end = now.withDayOfYear(1).minusDays(1);
+            return new LocalDateRange(start, end);
+        }
+
+        if (expression.startsWith("最近") || expression.startsWith("近")) {
+            Integer dayCount = extractRelativeCount(expression, "天");
+            if (dayCount == null) {
+                dayCount = extractRelativeCount(expression, "日");
+            }
+            if (dayCount != null) {
+                return new LocalDateRange(now.minusDays(Math.max(dayCount - 1L, 0L)), now);
+            }
+
+            Integer monthCount = extractRelativeCount(expression, "个月");
+            if (monthCount == null) {
+                monthCount = extractRelativeCount(expression, "月");
+            }
+            if (monthCount != null) {
+                return new LocalDateRange(now.minusMonths(monthCount), now);
+            }
+
+            Integer yearCount = extractRelativeCount(expression, "年");
+            if (yearCount != null) {
+                return new LocalDateRange(now.minusYears(yearCount), now);
+            }
+        }
+
+        return null;
+    }
+
+    private String normalizeDateRangeExpression(String value) {
+        if (value == null || value.isBlank()) {
+            return "";
+        }
+        return value.replace(" ", "")
+                .replace("　", "")
+                .replace("以内", "")
+                .replace("之内", "")
+                .trim();
+    }
+
+    private Integer extractRelativeCount(String expression, String unit) {
+        int prefixLength = expression.startsWith("最近") ? 2 : (expression.startsWith("近") ? 1 : 0);
+        if (prefixLength == 0) {
+            return null;
+        }
+        int unitIndex = expression.indexOf(unit, prefixLength);
+        if (unitIndex <= prefixLength) {
+            return null;
+        }
+        String countText = expression.substring(prefixLength, unitIndex);
+        if (countText.endsWith("个")) {
+            countText = countText.substring(0, countText.length() - 1);
+        }
+        return parsePositiveNumber(countText);
+    }
+
+    private Integer parsePositiveNumber(String value) {
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+        try {
+            int number = Integer.parseInt(value);
+            return number > 0 ? number : null;
+        } catch (NumberFormatException ignored) {
+        }
+
+        return switch (value) {
+            case "一", "壹", "两", "俩" -> 1;
+            case "二", "贰" -> 2;
+            case "三", "叁" -> 3;
+            case "四", "肆" -> 4;
+            case "五", "伍" -> 5;
+            case "六", "陆" -> 6;
+            case "七", "柒" -> 7;
+            case "八", "捌" -> 8;
+            case "九", "玖" -> 9;
+            case "十" -> 10;
+            case "十一" -> 11;
+            case "十二" -> 12;
+            default -> parseChineseTens(value);
+        };
+    }
+
+    private Integer parseChineseTens(String value) {
+        int tenIndex = value.indexOf('十');
+        if (tenIndex < 0) {
+            return null;
+        }
+        String tensPart = value.substring(0, tenIndex);
+        String onesPart = value.substring(tenIndex + 1);
+
+        Integer tens = tensPart.isEmpty() ? 1 : parsePositiveNumber(tensPart);
+        Integer ones = onesPart.isEmpty() ? 0 : parsePositiveNumber(onesPart);
+        if (tens == null || ones == null) {
+            return null;
+        }
+        return tens * 10 + ones;
+    }
+
+    private LocalDate parseDateOrDefault(String value, LocalDate defaultValue) {
+        if (value == null || value.isBlank()) {
+            return defaultValue;
+        }
+        try {
+            return LocalDate.parse(value.trim());
+        } catch (DateTimeParseException e) {
+            return defaultValue;
+        }
+    }
+
+    private String normalizePeriodType(String periodType) {
+        if (periodType == null || periodType.isBlank()) {
+            return "month";
+        }
+        String value = periodType.trim().toLowerCase();
+        if ("day".equals(value) || "month".equals(value) || "year".equals(value)) {
+            return value;
+        }
+        return "month";
+    }
+
+    private record LocalDateRange(LocalDate startDate, LocalDate endDate) {
+    }
 
     private PurchaseOrderInfo toPurchaseOrderInfo(PurchaseOrder o) {
         PurchaseOrderInfo info = new PurchaseOrderInfo();
@@ -607,5 +816,17 @@ public class AiTools {
         private String operatorName;
         private String createTime;
         private String remark;
+    }
+
+    /**
+     * 报表导出链接DTO
+     */
+    @lombok.Data
+    public static class ExportLinkInfo {
+        private String title;
+        private String url;
+        private String method;
+        private Boolean requiresToken;
+        private String tip;
     }
 }
