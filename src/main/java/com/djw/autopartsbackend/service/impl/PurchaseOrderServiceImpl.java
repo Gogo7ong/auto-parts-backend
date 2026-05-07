@@ -3,6 +3,7 @@ package com.djw.autopartsbackend.service.impl;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
+import com.djw.autopartsbackend.common.BusinessException;
 import com.djw.autopartsbackend.common.enums.InventoryOperationType;
 import com.djw.autopartsbackend.dto.PurchaseOrderDTO;
 import com.djw.autopartsbackend.dto.StockOperationParam;
@@ -53,14 +54,13 @@ public class PurchaseOrderServiceImpl extends ServiceImpl<PurchaseOrderMapper, P
         return this.page(page, wrapper);
     }
 
-    private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(PurchaseOrderServiceImpl.class);
-
     @Override
     @Transactional(rollbackFor = Exception.class)
     public boolean createOrderWithItems(PurchaseOrderDTO dto) {
+        validateOrderItems(dto.getItems());
         PurchaseOrder order = dto.getOrder();
 
-        if (order.getOrderNo() == null || order.getOrderNo().isEmpty()) {
+        if (!StringUtils.hasText(order.getOrderNo())) {
             order.setOrderNo(generateOrderNo());
         }
 
@@ -68,23 +68,13 @@ public class PurchaseOrderServiceImpl extends ServiceImpl<PurchaseOrderMapper, P
         order.setCreateTime(LocalDateTime.now());
         order.setTotalAmount(BigDecimal.ZERO);
         this.save(order);
-        log.info("创建采购订单成功，订单ID: {}, 订单号: {}", order.getId(), order.getOrderNo());
 
         BigDecimal totalAmount = BigDecimal.ZERO;
-        List<PurchaseOrderItem> items = dto.getItems();
-        log.info("采购订单明细数量: {}", items != null ? items.size() : 0);
-        if (items != null && !items.isEmpty()) {
-            for (PurchaseOrderItem item : items) {
-                item.setOrderId(order.getId());
-                if (item.getTotalPrice() == null) {
-                    BigDecimal unitPrice = Optional.ofNullable(item.getUnitPrice()).orElse(BigDecimal.ZERO);
-                    int qty = Optional.ofNullable(item.getQuantity()).orElse(0);
-                    item.setTotalPrice(unitPrice.multiply(new BigDecimal(qty)));
-                }
-                purchaseOrderItemMapper.insert(item);
-                log.info("保存采购订单明细成功，明细ID: {}, 配件ID: {}, 数量: {}", item.getId(), item.getPartId(), item.getQuantity());
-                totalAmount = totalAmount.add(Optional.ofNullable(item.getTotalPrice()).orElse(BigDecimal.ZERO));
-            }
+        for (PurchaseOrderItem item : dto.getItems()) {
+            item.setOrderId(order.getId());
+            fillTotalPrice(item);
+            purchaseOrderItemMapper.insert(item);
+            totalAmount = totalAmount.add(Optional.ofNullable(item.getTotalPrice()).orElse(BigDecimal.ZERO));
         }
 
         order.setTotalAmount(totalAmount);
@@ -99,6 +89,10 @@ public class PurchaseOrderServiceImpl extends ServiceImpl<PurchaseOrderMapper, P
         if (existing == null) {
             return false;
         }
+        if (!"PENDING".equals(existing.getStatus())) {
+            throw new BusinessException(400, "只有待审核的采购订单可以编辑");
+        }
+        validateOrderItems(dto.getItems());
 
         PurchaseOrder order = dto.getOrder();
         order.setId(orderId);
@@ -114,29 +108,16 @@ public class PurchaseOrderServiceImpl extends ServiceImpl<PurchaseOrderMapper, P
         purchaseOrderItemMapper.delete(deleteWrapper);
 
         BigDecimal totalAmount = BigDecimal.ZERO;
-        List<PurchaseOrderItem> items = dto.getItems();
-        if (items != null && !items.isEmpty()) {
-            for (PurchaseOrderItem item : items) {
-                item.setId(null);
-                item.setOrderId(orderId);
-                if (item.getTotalPrice() == null) {
-                    BigDecimal unitPrice = Optional.ofNullable(item.getUnitPrice()).orElse(BigDecimal.ZERO);
-                    int qty = Optional.ofNullable(item.getQuantity()).orElse(0);
-                    item.setTotalPrice(unitPrice.multiply(new BigDecimal(qty)));
-                }
-                purchaseOrderItemMapper.insert(item);
-                totalAmount = totalAmount.add(Optional.ofNullable(item.getTotalPrice()).orElse(BigDecimal.ZERO));
-            }
+        for (PurchaseOrderItem item : dto.getItems()) {
+            item.setId(null);
+            item.setOrderId(orderId);
+            fillTotalPrice(item);
+            purchaseOrderItemMapper.insert(item);
+            totalAmount = totalAmount.add(Optional.ofNullable(item.getTotalPrice()).orElse(BigDecimal.ZERO));
         }
 
         order.setTotalAmount(totalAmount);
         return this.updateById(order);
-    }
-
-    private String generateOrderNo() {
-        String dateStr = java.time.LocalDate.now().format(DateTimeFormatter.ofPattern("yyyyMMdd"));
-        int randomNum = (int) (Math.random() * 900) + 100;
-        return "PO" + dateStr + randomNum;
     }
 
     @Override
@@ -159,46 +140,23 @@ public class PurchaseOrderServiceImpl extends ServiceImpl<PurchaseOrderMapper, P
     @Override
     @Transactional(rollbackFor = Exception.class)
     public boolean approveOrder(Long orderId, Long approveUserId, String approveUserName) {
-        log.info("开始审批采购订单，订单ID: {}, 审批人: {}({})", orderId, approveUserName, approveUserId);
         PurchaseOrder order = this.getById(orderId);
         if (order == null) {
-            log.warn("审批失败：订单不存在，订单ID: {}", orderId);
             return false;
         }
-        log.info("订单状态: {}, 订单号: {}", order.getStatus(), order.getOrderNo());
         if (!"PENDING".equals(order.getStatus())) {
-            log.warn("审批失败：订单状态不是PENDING，当前状态: {}", order.getStatus());
             return false;
         }
+
         order.setStatus("APPROVED");
         order.setApproveUserId(approveUserId);
         order.setApproveUserName(approveUserName);
         order.setApproveTime(LocalDateTime.now());
-        boolean success = this.updateById(order);
-
-        if (success) {
-            LambdaQueryWrapper<PurchaseOrderItem> wrapper = new LambdaQueryWrapper<>();
-            wrapper.eq(PurchaseOrderItem::getOrderId, orderId);
-            List<PurchaseOrderItem> items = purchaseOrderItemMapper.selectList(wrapper);
-            log.info("审批采购订单，订单ID: {}, 明细数量: {}", orderId, items.size());
-
-            for (PurchaseOrderItem item : items) {
-                log.info("生成库存流水，配件ID: {}, 数量: {}", item.getPartId(), item.getQuantity());
-                StockOperationParam operationParam = new StockOperationParam();
-                operationParam.setPartId(item.getPartId());
-                operationParam.setOperationType(InventoryOperationType.PURCHASE_IN);
-                operationParam.setChangeQuantity(item.getQuantity());
-                operationParam.setRelatedOrderNo(order.getOrderNo());
-                operationParam.setOperatorId(approveUserId);
-                operationParam.setOperatorName(approveUserName);
-                operationParam.setRemark("采购订单审核入库");
-                inventoryOperationService.recordOperation(operationParam);
-            }
-        }
-        return success;
+        return this.updateById(order);
     }
 
     @Override
+    @Transactional(rollbackFor = Exception.class)
     public boolean completeOrder(Long orderId) {
         PurchaseOrder order = this.getById(orderId);
         if (order == null) {
@@ -207,7 +165,56 @@ public class PurchaseOrderServiceImpl extends ServiceImpl<PurchaseOrderMapper, P
         if (!"APPROVED".equals(order.getStatus())) {
             return false;
         }
+
+        LambdaQueryWrapper<PurchaseOrderItem> wrapper = new LambdaQueryWrapper<>();
+        wrapper.eq(PurchaseOrderItem::getOrderId, orderId);
+        List<PurchaseOrderItem> items = purchaseOrderItemMapper.selectList(wrapper);
+        validateOrderItems(items);
+
+        for (PurchaseOrderItem item : items) {
+            StockOperationParam operationParam = new StockOperationParam();
+            operationParam.setPartId(item.getPartId());
+            operationParam.setOperationType(InventoryOperationType.PURCHASE_IN);
+            operationParam.setChangeQuantity(item.getQuantity());
+            operationParam.setRelatedOrderNo(order.getOrderNo());
+            operationParam.setOperatorId(order.getApproveUserId());
+            operationParam.setOperatorName(order.getApproveUserName());
+            operationParam.setRemark("采购订单完成入库");
+            inventoryOperationService.recordOperation(operationParam);
+        }
+
         order.setStatus("COMPLETED");
         return this.updateById(order);
+    }
+
+    private String generateOrderNo() {
+        String dateStr = java.time.LocalDate.now().format(DateTimeFormatter.ofPattern("yyyyMMdd"));
+        int randomNum = (int) (Math.random() * 900) + 100;
+        return "PO" + dateStr + randomNum;
+    }
+
+    private void fillTotalPrice(PurchaseOrderItem item) {
+        if (item.getTotalPrice() == null) {
+            BigDecimal unitPrice = Optional.ofNullable(item.getUnitPrice()).orElse(BigDecimal.ZERO);
+            int qty = Optional.ofNullable(item.getQuantity()).orElse(0);
+            item.setTotalPrice(unitPrice.multiply(new BigDecimal(qty)));
+        }
+    }
+
+    private void validateOrderItems(List<PurchaseOrderItem> items) {
+        if (items == null || items.isEmpty()) {
+            throw new BusinessException(400, "订单明细不能为空");
+        }
+        for (PurchaseOrderItem item : items) {
+            if (item.getPartId() == null) {
+                throw new BusinessException(400, "配件ID不能为空");
+            }
+            if (item.getQuantity() == null || item.getQuantity() <= 0) {
+                throw new BusinessException(400, "数量必须大于0");
+            }
+            if (item.getUnitPrice() == null || item.getUnitPrice().compareTo(BigDecimal.ZERO) <= 0) {
+                throw new BusinessException(400, "单价必须大于0");
+            }
+        }
     }
 }

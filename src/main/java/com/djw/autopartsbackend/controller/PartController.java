@@ -7,6 +7,11 @@ import com.djw.autopartsbackend.common.Result;
 import com.djw.autopartsbackend.common.annotation.OperationLog;
 import com.djw.autopartsbackend.common.annotation.OperationType;
 import com.djw.autopartsbackend.entity.Part;
+import com.djw.autopartsbackend.entity.PurchaseOrderItem;
+import com.djw.autopartsbackend.entity.SalesOrderItem;
+import com.djw.autopartsbackend.mapper.InventoryMapper;
+import com.djw.autopartsbackend.mapper.PurchaseOrderItemMapper;
+import com.djw.autopartsbackend.mapper.SalesOrderItemMapper;
 import com.djw.autopartsbackend.security.RequireRole;
 import com.djw.autopartsbackend.service.PartService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -27,6 +32,15 @@ public class PartController {
 
     @Autowired
     private PartService partService;
+
+    @Autowired
+    private InventoryMapper inventoryMapper;
+
+    @Autowired
+    private PurchaseOrderItemMapper purchaseOrderItemMapper;
+
+    @Autowired
+    private SalesOrderItemMapper salesOrderItemMapper;
 
     @Operation(summary = "获取所有配件（用于下拉选择）")
     @GetMapping("/all")
@@ -86,6 +100,22 @@ public class PartController {
     @DeleteMapping("/{id}")
     @RequireRole({"ADMIN", "WAREHOUSE"})
     public Result<Void> delete(@PathVariable Long id) {
+        Integer stockQuantity = inventoryMapper.selectList(new LambdaQueryWrapper<com.djw.autopartsbackend.entity.Inventory>()
+                        .eq(com.djw.autopartsbackend.entity.Inventory::getPartId, id))
+                .stream()
+                .map(com.djw.autopartsbackend.entity.Inventory::getStockQuantity)
+                .filter(java.util.Objects::nonNull)
+                .reduce(0, Integer::sum);
+        if (stockQuantity != 0) {
+            return Result.error(400, "配件仍有库存，不能删除");
+        }
+        Long purchaseRefs = purchaseOrderItemMapper.selectCount(new LambdaQueryWrapper<PurchaseOrderItem>()
+                .eq(PurchaseOrderItem::getPartId, id));
+        Long salesRefs = salesOrderItemMapper.selectCount(new LambdaQueryWrapper<SalesOrderItem>()
+                .eq(SalesOrderItem::getPartId, id));
+        if (purchaseRefs > 0 || salesRefs > 0) {
+            return Result.error(400, "配件已被订单引用，不能删除");
+        }
         partService.removeById(id);
         return Result.success();
     }

@@ -16,6 +16,7 @@ import com.djw.autopartsbackend.security.RequireRole;
 import com.djw.autopartsbackend.service.SalesOrderService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.validation.Valid;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
 
@@ -85,7 +86,7 @@ public class SalesOrderController {
     @PostMapping
     @RequireRole({"ADMIN", "SALESMAN"})
     public Result<Void> add(
-            @RequestBody SalesOrderFormDTO form,
+            @Valid @RequestBody SalesOrderFormDTO form,
             @RequestHeader(value = "token", required = false) String token) {
         SalesOrderDTO dto = toSalesOrderDTO(form);
         fillCreateUserInfo(dto, token);
@@ -96,7 +97,7 @@ public class SalesOrderController {
     @Operation(summary = "更新销售订单（包含明细）")
     @PutMapping("/{id}")
     @RequireRole({"ADMIN", "SALESMAN"})
-    public Result<Void> updateWithItems(@PathVariable Long id, @RequestBody SalesOrderFormDTO form) {
+    public Result<Void> updateWithItems(@PathVariable Long id, @Valid @RequestBody SalesOrderFormDTO form) {
         boolean success = salesOrderService.updateOrderWithItems(id, toSalesOrderDTO(form));
         return success ? Result.success() : Result.error("更新失败");
     }
@@ -105,6 +106,14 @@ public class SalesOrderController {
     @PutMapping
     @RequireRole({"ADMIN", "SALESMAN"})
     public Result<Void> update(@RequestBody SalesOrder order) {
+        SalesOrder existing = salesOrderService.getById(order.getId());
+        if (existing == null) {
+            return Result.error("订单不存在");
+        }
+        if (!"PENDING".equals(existing.getStatus())) {
+            return Result.error(400, "只有待出库的销售订单可以编辑");
+        }
+        order.setStatus(existing.getStatus());
         salesOrderService.updateById(order);
         return Result.success();
     }
@@ -212,4 +221,3 @@ public class SalesOrderController {
         return entity;
     }
 }
-

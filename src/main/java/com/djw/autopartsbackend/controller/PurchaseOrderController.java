@@ -17,6 +17,7 @@ import com.djw.autopartsbackend.service.PurchaseOrderService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.servlet.http.HttpServletRequest;
+import jakarta.validation.Valid;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
 
@@ -92,7 +93,7 @@ public class PurchaseOrderController {
     @Operation(summary = "新增采购订单")
     @PostMapping
     @RequireRole({"ADMIN", "WAREHOUSE"})
-    public Result<Void> add(@RequestBody PurchaseOrderFormDTO form, HttpServletRequest request) {
+    public Result<Void> add(@Valid @RequestBody PurchaseOrderFormDTO form, HttpServletRequest request) {
         PurchaseOrderDTO dto = toPurchaseOrderDTO(form);
 
         // 兼容旧逻辑：允许通过 header 传创建人信息
@@ -112,7 +113,7 @@ public class PurchaseOrderController {
     @Operation(summary = "更新采购订单（包含明细）")
     @PutMapping("/{id}")
     @RequireRole({"ADMIN", "WAREHOUSE"})
-    public Result<Void> updateWithItems(@PathVariable Long id, @RequestBody PurchaseOrderFormDTO form) {
+    public Result<Void> updateWithItems(@PathVariable Long id, @Valid @RequestBody PurchaseOrderFormDTO form) {
         boolean success = purchaseOrderService.updateOrderWithItems(id, toPurchaseOrderDTO(form));
         return success ? Result.success() : Result.error("更新失败");
     }
@@ -121,6 +122,14 @@ public class PurchaseOrderController {
     @PutMapping
     @RequireRole({"ADMIN", "WAREHOUSE"})
     public Result<Void> update(@RequestBody PurchaseOrder order) {
+        PurchaseOrder existing = purchaseOrderService.getById(order.getId());
+        if (existing == null) {
+            return Result.error("订单不存在");
+        }
+        if (!"PENDING".equals(existing.getStatus())) {
+            return Result.error(400, "只有待审核的采购订单可以编辑");
+        }
+        order.setStatus(existing.getStatus());
         purchaseOrderService.updateById(order);
         return Result.success();
     }
@@ -222,4 +231,3 @@ public class PurchaseOrderController {
         return entity;
     }
 }
-

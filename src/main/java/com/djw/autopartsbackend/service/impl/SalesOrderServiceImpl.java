@@ -3,6 +3,7 @@ package com.djw.autopartsbackend.service.impl;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
+import com.djw.autopartsbackend.common.BusinessException;
 import com.djw.autopartsbackend.common.enums.InventoryOperationType;
 import com.djw.autopartsbackend.dto.SalesOrderDTO;
 import com.djw.autopartsbackend.dto.StockOperationParam;
@@ -55,6 +56,7 @@ public class SalesOrderServiceImpl extends ServiceImpl<SalesOrderMapper, SalesOr
     @Override
     @Transactional(rollbackFor = Exception.class)
     public boolean createOrderWithItems(SalesOrderDTO dto) {
+        validateOrderItems(dto.getItems());
         SalesOrder order = dto.getOrder();
         if (order.getOrderNo() == null || order.getOrderNo().isEmpty()) {
             order.setOrderNo(generateOrderNo());
@@ -93,6 +95,10 @@ public class SalesOrderServiceImpl extends ServiceImpl<SalesOrderMapper, SalesOr
         if (existing == null) {
             return false;
         }
+        if (!"PENDING".equals(existing.getStatus())) {
+            throw new BusinessException(400, "只有待出库的销售订单可以编辑");
+        }
+        validateOrderItems(dto.getItems());
 
         SalesOrder order = dto.getOrder();
         order.setId(orderId);
@@ -132,6 +138,23 @@ public class SalesOrderServiceImpl extends ServiceImpl<SalesOrderMapper, SalesOr
         String dateStr = java.time.LocalDate.now().format(DateTimeFormatter.ofPattern("yyyyMMdd"));
         int randomNum = (int) (Math.random() * 900) + 100;
         return "SO" + dateStr + randomNum;
+    }
+
+    private void validateOrderItems(List<SalesOrderItem> items) {
+        if (items == null || items.isEmpty()) {
+            throw new BusinessException(400, "订单明细不能为空");
+        }
+        for (SalesOrderItem item : items) {
+            if (item.getPartId() == null) {
+                throw new BusinessException(400, "配件ID不能为空");
+            }
+            if (item.getQuantity() == null || item.getQuantity() <= 0) {
+                throw new BusinessException(400, "数量必须大于0");
+            }
+            if (item.getUnitPrice() == null || item.getUnitPrice().compareTo(java.math.BigDecimal.ZERO) <= 0) {
+                throw new BusinessException(400, "单价必须大于0");
+            }
+        }
     }
 
     @Override
