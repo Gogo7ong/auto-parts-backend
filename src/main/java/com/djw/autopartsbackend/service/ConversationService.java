@@ -27,6 +27,7 @@ public class ConversationService {
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     private static final String KEY_PREFIX = "ai:chat:memory:";
+    private static final String TOOL_CALL_PLACEHOLDER = "[tool-call]";
 
     /**
      * 获取所有会话列表
@@ -78,9 +79,9 @@ public class ConversationService {
                 String type = (String) wrapper.get("type");
                 String content = (String) wrapper.get("content");
 
-                if ("USER".equals(type)) {
+                if ("USER".equals(type) && hasText(content)) {
                     messages.add(ChatMessageResp.user(content));
-                } else if ("AI".equals(type)) {
+                } else if ("AI".equals(type) && isDisplayableAiContent(content)) {
                     messages.add(ChatMessageResp.ai(content));
                 }
                 // SYSTEM消息不返回给前端
@@ -116,6 +117,11 @@ public class ConversationService {
             return null;
         }
 
+        List<ChatMessageResp> displayMessages = getConversationMessages(conversationId);
+        if (displayMessages.isEmpty()) {
+            return null;
+        }
+
         // 获取最后一条消息
         String lastJson = redisTemplate.opsForList().index(key, -1);
         String lastMessage = "";
@@ -135,6 +141,13 @@ public class ConversationService {
 
         // 获取key的过期时间作为更新时间
         Long ttl = redisTemplate.getExpire(key);
+        String displayContent = displayMessages.get(displayMessages.size() - 1).getContent();
+        if (displayContent != null && displayContent.length() > 50) {
+            lastMessage = displayContent.substring(0, 50) + "...";
+        } else {
+            lastMessage = displayContent;
+        }
+
         LocalDateTime updateTime = LocalDateTime.now();
         if (ttl != null && ttl > 0) {
             // 估算更新时间（过期时间剩余越多，说明越新）
@@ -144,8 +157,16 @@ public class ConversationService {
         ConversationResp resp = new ConversationResp();
         resp.setConversationId(conversationId);
         resp.setLastMessage(lastMessage);
-        resp.setMessageCount(size.intValue());
+        resp.setMessageCount(displayMessages.size());
         resp.setUpdateTime(updateTime);
         return resp;
+    }
+
+    private boolean isDisplayableAiContent(String content) {
+        return hasText(content) && !TOOL_CALL_PLACEHOLDER.equals(content.trim());
+    }
+
+    private boolean hasText(String content) {
+        return content != null && !content.trim().isEmpty();
     }
 }

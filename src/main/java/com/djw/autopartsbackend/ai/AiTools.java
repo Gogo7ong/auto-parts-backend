@@ -9,11 +9,13 @@ import com.djw.autopartsbackend.entity.InventoryLog;
 import com.djw.autopartsbackend.entity.Part;
 import com.djw.autopartsbackend.entity.PurchaseOrder;
 import com.djw.autopartsbackend.entity.SalesOrder;
+import com.djw.autopartsbackend.dto.TurnoverRateDTO;
 import com.djw.autopartsbackend.service.InventoryLogService;
 import com.djw.autopartsbackend.service.InventoryService;
 import com.djw.autopartsbackend.service.PartService;
 import com.djw.autopartsbackend.service.PurchaseOrderService;
 import com.djw.autopartsbackend.service.SalesOrderService;
+import com.djw.autopartsbackend.service.StatisticsService;
 import dev.langchain4j.agent.tool.Tool;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -45,6 +47,7 @@ public class AiTools {
     private final PurchaseOrderService purchaseOrderService;
     private final SalesOrderService salesOrderService;
     private final InventoryLogService inventoryLogService;
+    private final StatisticsService statisticsService;
 
     /**
      * 查询所有配件品牌
@@ -447,6 +450,39 @@ public class AiTools {
         return exportLink("采购统计报表", url);
     }
 
+    // ==================== 周转率统计 ====================
+
+    /**
+     * 查询配件库存周转率
+     *
+     * @return 周转率统计列表
+     */
+    @Tool("查询配件库存周转率统计，返回各配件的当前库存、近三月出库数量、周转率和月均出库数量。周转率越高表示库存流转越快。用户询问周转率、库存周转、库存流动性时调用。")
+    public List<TurnoverRateInfo> getTurnoverRates() {
+        log.info("AI工具调用: getTurnoverRates");
+        List<TurnoverRateDTO> list = statisticsService.getTurnoverRateStatistics();
+        return list.stream()
+                .map(this::toTurnoverRateInfo)
+                .collect(Collectors.toList());
+    }
+
+    /**
+     * 按配件编号查询周转率
+     *
+     * @param partCode 配件编号
+     * @return 周转率信息（如不存在返回null）
+     */
+    @Tool("按配件编号查询指定配件的库存周转率，包括当前库存、近三月出库数量、周转率和月均出库数量")
+    public TurnoverRateInfo getTurnoverRateByPartCode(String partCode) {
+        log.info("AI工具调用: getTurnoverRateByPartCode, partCode={}", partCode);
+        List<TurnoverRateDTO> list = statisticsService.getTurnoverRateStatistics();
+        return list.stream()
+                .filter(dto -> partCode.equals(dto.getPartCode()))
+                .findFirst()
+                .map(this::toTurnoverRateInfo)
+                .orElse(null);
+    }
+
     // ==================== 供应商 ====================
 
     /**
@@ -828,5 +864,32 @@ public class AiTools {
         private String method;
         private Boolean requiresToken;
         private String tip;
+    }
+
+    /**
+     * 周转率信息DTO
+     */
+    @lombok.Data
+    public static class TurnoverRateInfo {
+        private String partCode;
+        private String partName;
+        private Integer currentStock;
+        private Integer totalOutbound;
+        private String turnoverRate;
+        private String avgMonthlyOutbound;
+    }
+
+    /**
+     * 转换为TurnoverRateInfo
+     */
+    private TurnoverRateInfo toTurnoverRateInfo(TurnoverRateDTO dto) {
+        TurnoverRateInfo info = new TurnoverRateInfo();
+        info.setPartCode(dto.getPartCode());
+        info.setPartName(dto.getPartName());
+        info.setCurrentStock(dto.getCurrentStock());
+        info.setTotalOutbound(dto.getTotalOutbound());
+        info.setTurnoverRate(dto.getTurnoverRate() != null ? dto.getTurnoverRate().toPlainString() : "0");
+        info.setAvgMonthlyOutbound(dto.getAvgMonthlyOutbound() != null ? dto.getAvgMonthlyOutbound().toPlainString() : "0");
+        return info;
     }
 }
